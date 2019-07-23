@@ -1,0 +1,136 @@
+---
+title: "Data Cleaning"
+author: "Sohyeon Kim"
+date: '2019 7 22 '
+output: pdf_document
+header-includes:
+  - \usepackage{kotex}
+---
+
+
+```{r warning = FALSE, message = FALSE}
+setwd("C:/Users/kshye/bigcon")
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(data.table)
+```
+
+
+# 1-1. SK Telecom (Age)
+
+```{r message = FALSE}
+setwd(paste0(getwd(), "/유동인구데이터"))
+SK_Age <- list()
+SK_Age_File_Nm <- dir()[str_starts(dir(), pattern = "노원_종로_FLOW_AGE")]
+
+for(i in 1:length(SK_Age_File_Nm)) {
+  Data <- read_csv(SK_Age_File_Nm[i])
+  colnames <- colnames(Data) %>% str_split(pattern = "\\|") %>% unlist()
+  SK_Age[[i]] <- Data %>% 
+    separate(colnames(Data), into = colnames, sep = "\\|") %>%
+    mutate(STD_YMD = strptime(STD_YMD, "%Y%m%d") %>% as.character())
+}
+
+Month <- month.abb[c(4:12, 1:3)]
+names(SK_Age) <- Month
+```
+
+
+# 1-2. SK Telecom (Time)
+
+```{r message = FALSE}
+setwd(paste0(getwd(), "/유동인구데이터"))
+SK_Time <- list()
+SK_Time_File_Nm <- dir()[str_starts(dir(), pattern = "노원_종로_FLOW_TIME")]
+
+for(i in 1:length(SK_Time_File_Nm)){
+  Data <- read_csv(SK_Time_File_Nm[i])
+  colnames <- colnames(Data) %>% str_split(pattern = "\\|") %>% unlist()
+  SK_Time[[i]] <- Data %>%
+    separate(colnames(Data), into = colnames, sep = "\\|") %>% 
+    mutate(STD_YMD = strptime(STD_YMD, "%Y%m%d") %>% as.character())
+}
+
+names(SK_Time) <- Month
+```
+
+# 2. Weather
+
+```{r message = FALSE, warning = FALSE}
+setwd(paste0(getwd(), "/환경기상데이터/노원구"))
+Wth_Nowon <- list()
+Wth_Nowon_File_Nm <- dir()[str_starts(dir(), pattern = "V")]
+
+for(i in 1:length(Wth_Nowon_File_Nm)) {
+  Data <- read_csv(Wth_Nowon_File_Nm[i]) %>% select(1:10)
+  Wth_Nowon[[i]] <- Data %>%
+    separate(tm, into = c("Day", "Hour"), sep = 8) %>%
+    mutate(Day = strptime(Day, "%Y%m%d") %>% as.character())
+}
+```
+
+```{r message = FALSE, warning = FALSE}
+setwd(paste0(getwd(), "/환경기상데이터/종로구"))
+Wth_Jongno <- list()
+Wth_Jongno_File_Nm <- dir()[str_starts(dir(), pattern = "V")]
+
+for(i in 1:length(Wth_Jongno_File_Nm)) {
+  Data <- read_csv(Wth_Jongno_File_Nm[i]) %>% select(1:10)
+  Wth_Jongno[[i]] <- Data %>%
+    separate(tm, into = c("Day", "Hour"), sep = 8) %>%
+    mutate(Day = strptime(Day, "%Y%m%d") %>% as.character())
+  print(i)
+}
+```
+
+# 3. GS (Distribution)
+
+
+
+```{r}
+setwd(paste0(getwd(), "/유통데이터"))
+GS_Dist_File_Nm <- dir()[str_starts(dir(), pattern = "GS리테일")]
+
+Dist <- read_excel(GS_Dist_File_Nm, sheet = 6) %>%
+  gather(Category, value, -OPER_DT, -BOR_CD, -ADMD_CD, -AMT_IND) %>%
+  mutate(Category = parse_number(Category)) %>%
+  group_by(OPER_DT, ADMD_CD, Category)
+```
+
+```{r}
+setwd(paste0(getwd(), "/유통데이터"))
+GS_Dist_File_Nm <- dir()[str_starts(dir(), pattern = "GS리테일")]
+
+HDong_CD <- read_excel(GS_Dist_File_Nm, sheet = 2, skip = 1) %>%
+  `colnames<-`(value = c("GU_CD", "GU_NM", "HDONG_CD", "HDONG_NM"))
+```
+
+```{r}
+setwd(paste0(getwd(), "/유통데이터"))
+GS_Dist_File_Nm <- dir()[str_starts(dir(), pattern = "GS리테일")]
+
+Dist_Category <- read_excel(GS_Dist_File_Nm, sheet = 3, skip = 1) %>%
+  `colnames<-`(value = c("CTG_CD", "CTG_NM", "CTG_EX"))
+```
+
+
+
+# 4. Card
+
+```{r}
+setwd(paste0(getwd(), "/카드매출데이터/CARD_SPENDING"))
+Card_File_Nm <- dir()[str_starts(dir(), pattern = "CARD")]
+Card <- fread(Card_File_Nm) %>%
+  as_tibble %>%
+  mutate(HDONG_CD = paste0(GU_CD, "0", DONG_CD))
+```
+
+
+
+
+
+
+
+
+
