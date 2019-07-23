@@ -80,7 +80,6 @@ for(i in 1:length(Wth_Jongno_File_Nm)) {
   Wth_Jongno[[i]] <- Data %>%
     separate(tm, into = c("Day", "Hour"), sep = 8) %>%
     mutate(Day = strptime(Day, "%Y%m%d") %>% as.character())
-  print(i)
 }
 ```
 
@@ -125,6 +124,20 @@ Card <- fread(Card_File_Nm) %>%
   as_tibble %>%
   mutate(HDONG_CD = paste0(GU_CD, "0", DONG_CD))
 ```
+
+# 5. SNS
+
+```{r}
+setwd(paste0(getwd(), "/SNS데이터"))
+SNS <- list()
+SNS_File_Nm <- dir()[str_starts(dir(), pattern = "SNS")]
+
+for(i in 1:length(SNS_File_Nm)) {
+  SNS[[i]] <- read_xlsx(SNS_File_Nm[i]) %>% 
+    separate(DATE, into = c("Day", "Hour"), sep = 8)
+}
+```
+
 
 
 
