@@ -94,7 +94,7 @@ GS_Dist_File_Nm <- dir()[str_starts(dir(), pattern = "GS리테일")]
 Dist <- read_excel(GS_Dist_File_Nm, sheet = 6) %>%
   gather(Category, value, -OPER_DT, -BOR_CD, -ADMD_CD, -AMT_IND) %>%
   mutate(Category = parse_number(Category)) %>%
-  group_by(OPER_DT, ADMD_CD, Category)
+  mutate(OPER_DT = strptime(OPER_DT, "%Y%m%d") %>% as.character())
 ```
 
 ```{r}
@@ -125,6 +125,17 @@ Card <- fread(Card_File_Nm) %>%
   mutate(HDONG_CD = paste0(GU_CD, "0", DONG_CD))
 ```
 
+```{r}
+setwd(paste0(getwd(), "/카드매출데이터"))
+Card_File_Nm <- dir()[str_starts(dir(), pattern = "2019빅콘테스트")]
+
+MCT_CAT_CD <- read_xlsx(Card_File_Nm, sheet = 3, range = "B4:B165", col_names = FALSE) %>%
+  `colnames<-`(value = "Column") %>%
+  filter(!is.na(Column)) %>%
+  separate(Column, into = c("MCT_NM", "MCT_CD"))
+```
+
+
 # 5. SNS
 
 ```{r}
@@ -139,6 +150,12 @@ for(i in 1:length(SNS_File_Nm)) {
 ```
 
 
+```{r}
+for(i in 1:length(SNS)) {
+  SNS[[i]] <- SNS[[i]] %>% 
+    mutate(Day = strptime(Day, "%Y%m%d") %>% as.character())
+}
+```
 
 
 
