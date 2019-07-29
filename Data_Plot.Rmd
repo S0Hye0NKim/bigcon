@@ -1,0 +1,447 @@
+---
+title: "Data Plot"
+author: "Sohyeon Kim"
+date: '2019 7 23 '
+output: html_document
+header-includes:
+  - \usepackage{kotex}
+---
+
+```{r message = FALSE, warning = FALSE}
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+load("Data_Cleansing.RData")
+```
+
+
+# 0. Weather
+
+```{r}
+Dust_lev <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
+
+Weather <- Wth_Jongno[[12]] %>%
+  mutate(pm10 = as.numeric(pm10), 
+         pm25 = as.numeric(pm25), 
+         pm10 = case_when((pm10 <= 30) ~ "Good", 
+                          (pm10>30 & pm10<=50) ~ "Moderate", 
+                          (pm10>50 & pm10<=75) ~ "Sens_Unhealthy", 
+                          (pm10>75 & pm10<=100) ~ "Unhealthy", 
+                          (pm10>100 & pm10<=150) ~ "Very Unhealthy", 
+                          (pm10>150) ~ "Worst"), 
+         pm25 = case_when((pm25 <= 15) ~ "Good", 
+                          (pm25>15 & pm25<=25) ~ "Moderate", 
+                          (pm25>25 & pm25<=37) ~ "Sens_Unhealthy", 
+                          (pm25>37 & pm25<=50) ~ "Unhealthy", 
+                          (pm25>50 & pm25<=75) ~ "Very Unhealthy", 
+                          (pm25>75) ~ "Worst")) %>%
+  separate(col = Day, into = c("Year", "Month", "Day")) %>%
+  group_by(Year, Month, Day)
+
+Smr_Wth <- Weather %>%
+  summarise(pm10 = which.max(table(pm10)) %>% names(), 
+            pm25 = which.max(table(pm25)) %>% names(), 
+            avg_noise = mean(noise), 
+            avg_temp = mean(temp), 
+            avg_humi = mean(humi)) %>%
+  mutate(pm10 = factor(pm10, levels = Dust_lev), 
+         pm25 = factor(pm25, levels = Dust_lev)) %>%
+  ungroup() %>%
+  mutate(Month = month.abb[as.numeric(Month)] %>%
+           factor(levels = c("Apr", "May", "Jun", "Jul", "Aug", "Sep", 
+                             "Oct", "Nov", "Dec", "Jan", "Feb", "Mar")))
+```
+
+Select the machine (serial == V10O1611170) which has 365 Day data in Wth_Jongno.
+summarise the Data with mode(pm10, pm25), average(noise, temp, humi)
+"미세미세" 어플 기준으로 구간 배정.
+구간 중 최빈값을 하루를 대표하는 값으로 설정.
+
+```{r}
+Smr_Wth %>%
+  gather(key = "Dust", value = "value", pm10, pm25) %>%
+  mutate(Day = as.numeric(Day)) %>%
+  ggplot() +
+  geom_line(aes(x = Day, y = value, group = Dust, color = Dust)) +
+  facet_wrap(~Month, nrow = 4, ncol = 3)
+```
+
+pm10 is almost Good-Modertate, Sometimes Unhealthy.
+pm25 is Unhealthy in Dec-Jan-Feb
+
+
+```{r}
+Classify_Wrn_Day <- function(x) {
+  if("Dust_Watch" %in% x) {
+    return("Dust_Watch")
+  } else if("Warning" %in% x) {
+    return("Warning")
+  } else {return("No_Wrn")}
+}
+```
+
+
+```{r}
+Wth_Obs <- Wth_Jongno[[12]] 
+Wrn_lev <- c("No_Wrn", "Warning", "Dust_Watch")
+
+Dust_Wrn <- Wth_Obs %>%
+  separate(Hour, into = c("Hour", "Minute"), 2) %>%
+  mutate(pm10 = as.numeric(pm10), pm25 = as.numeric(pm25)) %>%
+  group_by(Day, Hour) %>%
+  summarise(pm10 = mean(pm10), pm25 = mean(pm25)) %>%
+  mutate(pm10 = case_when((pm10 < 150) ~ "No_Wrn", 
+                          (pm10 >= 150 & pm10 < 300) ~ "Warning", 
+                          (pm10 >= 300) ~ "Dust_Watch"), 
+         pm25 = case_when((pm25 < 75) ~ "No_Wrn", 
+                          (pm10 >= 75 & pm10 < 150) ~ "Warning", 
+                          (pm10 >= 150) ~ "Dust_Watch")) %>%
+  ungroup() %>%
+  mutate(pm10_Pre = lag(pm10), 
+         pm25_Pre = lag(pm25), 
+         pm10_Wrn = ifelse(pm10 == pm10_Pre, pm10, "Not"), 
+         pm25_Wrn = ifelse(pm25 == pm25_Pre, pm25, "Not")) %>%
+  group_by(Day) %>%
+  summarise(pm10 = Classify_Wrn_Day(pm10_Wrn), 
+            pm25 = Classify_Wrn_Day(pm25_Wrn))
+```
+
+pm10, pm25의 시간별 평균 미세먼지 농도를 구한 후, 세가지 단계로 분류
+pm10의 시간 평균농도가 150이상이 두시간 지속이면 미세먼지 주의보, 
+pm10의 시간 평균농도가 300이상이 두시간 지속이면 미세먼지 경보.
+
+pm25의 시간 평균농도가 75이상이 두시간 지속이면 초미세먼지 주의보, 
+pm25의 시간 평균농도가 150이상이 두시간 지속이면 초미세먼지 경보 발령.
+(대전광역시 보건환경연구원 기준)
+
+
+```{r}
+Dust_Wrn %>%
+  gather(key = "Warning", value = "value", -Day) %>%
+  mutate(value = factor(value, levels = Wrn_lev)) %>%
+  separate(Day, into = c("Year", "Month", "Day")) %>%
+  mutate(Month = month.abb[as.numeric(Month)] %>%
+           factor(levels = c("Apr", "May", "Jun", "Jul", "Aug", "Sep", 
+                             "Oct", "Nov", "Dec", "Jan", "Feb", "Mar")), 
+         Day = as.numeric(Day)) %>%
+  ggplot() +
+  geom_line(aes(x = Day, y = value, group = Warning, color = Warning)) +
+  facet_wrap(~Month, nrow = 4)
+```
+
+12/15 -3/12 초미세먼지 경보 지속적으로 발령
+12-3월까지는 미세먼지 영향권
+
+
+# 1. SK
+
+
+```{r}
+SK_Age[[5]] %>% 
+  gather(key = "Type", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
+  separate(Type, into = c("Sex", "Age"), sep = "_FLOW_POP_CNT_") %>%
+  mutate(Date = as.Date(STD_YMD), 
+         Avg_pop = as.numeric(Avg_pop)) %>%
+  group_by(STD_YMD, Sex) %>%
+  summarise(SUM = sum(Avg_pop))
+```
+
+Date, Sex로 하고 Avg_pop을 더하면 정수가 나온다.
+
+Avg_pop 구하는 데에 연관이 있을 것으로 사료됨.
+
+```{r eval = FALSE}
+ggplot(APR %>% filter(HDONG_CD == "1111061500")) +
+  geom_line(aes(x = Date, y = Avg_pop, group = Age, color = Age)) +
+  scale_y_log10() +
+  facet_wrap(~Sex, ncol = 1)  +
+  ggtitle("종로1,2,3,4가동 4월 유동인구")
+```
+
+1111061500 is code for "종로1,2,3,4가동"
+Youth is dropped because It is too samll.
+
+
+```{r}
+APR_Time <- SK_Time[[1]]
+
+APR_Time %>% filter(HDONG_CD == "1111061500", 
+                    STD_YMD %in% c("2018-04-11", "2018-04-14", "2018-04-15")) %>%
+  gather(key = "Time", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
+  mutate(Time = parse_number(Time), Avg_pop = as.numeric(Avg_pop)) %>%
+  ggplot() +
+  geom_line(aes(x = Time, y = Avg_pop, group = STD_YMD, color = STD_YMD)) +
+  scale_y_log10() +
+  guides(color = guide_legend(title = "Day"))
+```
+
+2018-04-11 is WED.
+2018-04-14 is SAT
+2018-04-15 is SUN
+
+
+```{r eval = FALSE}
+APR_Time <- SK_Time[[1]]
+
+APR_Time %>%
+  gather(key = "Time", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
+  mutate(Time = parse_number(Time), Avg_pop = as.numeric(Avg_pop), 
+         Week_Day = strftime(STD_YMD, "%a")) %>%
+  group_by(STD_YMD) %>%
+  summarise(Sum = sum(Avg_pop))
+```
+
+ -> STD_YMD로 grouping하고 sum하면 정수가 나온다...?
+ 
+ * Avg_pop 계산하는 거 구해서 요일별/시간대별로 line 찍기
+
+# 2. Card
+
+```{r}
+Rising <- c(25, 30, 35)
+Middle <- c(40, 45, 50, 55)
+Senior <- c(60, 65)
+
+Card <- Card %>%
+  mutate(AGE = case_when(AGE_CD == 20 ~ "Youth", 
+                         AGE_CD %in% Rising ~ "Rising", 
+                         AGE_CD %in% Middle ~ "Middle", 
+                         AGE_CD %in% Senior ~ "Senior"), 
+         AGE = factor(AGE, levels = c("Youth", "Rising", "Middle", "Senior"))) %>%
+  group_by(STD_DD)
+```
+
+Separate Age_Type with (Youth, Rising, Middle, Senior)
+
+
+```{r}
+Smr_Card <- Card %>%
+  separate(STD_DD, into = c("YEAR", "MONTH", "DAY")) %>%
+  mutate(MONTH = month.abb[as.numeric(MONTH)] %>%
+           factor(levels = c("Apr", "May", "Jun", "Jul", "Aug", "Sep", 
+                             "Oct", "Nov", "Dec", "Jan", "Feb", "Mar")), 
+         MCT_CAT_CD = as.character(MCT_CAT_CD)) %>%
+  group_by(YEAR, MONTH, DAY, MCT_CAT_CD) %>%
+  summarise(SUM_CNT = sum(USE_CNT), SUM_AMT = sum(USE_AMT)) %>%
+  group_by(YEAR, MONTH, DAY) 
+  
+```
+
+
+```{r}
+EFF_MCT_CAT <- c("21", "40", "34", "50", "42", "62")
+DUST_EFF_MTH <- c("Dec", "Jan", "Feb", "Mar")
+
+
+left_join(Smr_Card, MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
+  mutate(DUST_EFF = ifelse(MONTH %in% DUST_EFF_MTH, "DUST_EFF_MTH", "NO_EFF_MTH")) %>%
+  filter(MCT_CAT_CD %in% EFF_MCT_CAT) %>%
+  ungroup() %>%
+  mutate(DAY = as.numeric(DAY)) %>%
+  ggplot() +
+  geom_line(aes(x = DAY, y = SUM_CNT, group = MONTH, color = DUST_EFF)) +
+   facet_wrap(~MCT_NM, nrow = 2, ncol = 3, scales = "free") +
+  scale_y_log10()
+```
+
+미세먼지 영향권 달에 (광학제품, 레저업소, 서적문구) 는 매출건이 많고, 
+(유통업, 의복, 자동차 정비)는 건수가 줄어든다. 
+
+미세먼지 영향권 달을 12-3월로 규정한 만큼, 기온과 신학기의 상관관계를 주의하여 밝힐 것.
+
+
+
+```{r}
+left_join(Smr_Card, MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
+  mutate(DUST_EFF = ifelse(MONTH %in% DUST_EFF_MTH, "DUST_EFF_MTH", "NO_EFF_MTH")) %>%
+  filter(MCT_CAT_CD %in% EFF_MCT_CAT) %>%
+  ungroup() %>%
+  mutate(DAY = as.numeric(DAY)) %>%
+  ggplot() +
+  geom_line(aes(x = DAY, y = SUM_AMT, group = MONTH, color = DUST_EFF)) +
+   facet_wrap(~MCT_NM, nrow = 2, ncol = 3, scales = "free") +
+  scale_y_log10()
+```
+
+```{r}
+Card %>%
+  group_by(STD_DD, MCT_CAT_CD) %>%
+  summarise(SUM_CNT = sum(USE_CNT), SUM_AMT = sum(USE_AMT)) %>%
+  mutate(MCT_CAT_CD = as.character(MCT_CAT_CD)) %>%
+  left_join(y = MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
+  filter(MCT_CAT_CD == 40) %>%
+  ungroup() %>%
+  mutate(STD_DD = as.Date(STD_DD)) %>%
+  ggplot() +
+  geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
+```
+
+(유통업) 12-3월까지 낮다.
+
+```{r}
+Card %>%
+  group_by(STD_DD, MCT_CAT_CD) %>%
+  summarise(SUM_CNT = sum(USE_CNT), SUM_AMT = sum(USE_AMT)) %>%
+  mutate(MCT_CAT_CD = as.character(MCT_CAT_CD)) %>%
+  left_join(y = MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
+  filter(MCT_CAT_CD == 50) %>%
+  ungroup() %>%
+  mutate(STD_DD = as.Date(STD_DD)) %>%
+  ggplot() +
+  geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
+```
+
+서적 / 문구는 미세먼지 기간에 살짝 높다.
+
+
+```{r}
+Card %>%
+  group_by(STD_DD, MCT_CAT_CD) %>%
+  summarise(SUM_CNT = sum(USE_CNT), SUM_AMT = sum(USE_AMT)) %>%
+  mutate(MCT_CAT_CD = as.character(MCT_CAT_CD)) %>%
+  left_join(y = MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
+  filter(MCT_CAT_CD == 34) %>%
+  ungroup() %>%
+  mutate(STD_DD = as.Date(STD_DD)) %>%
+  ggplot() +
+  geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
+```
+
+
+광학은 미세먼지 기간에 살짝 높다.
+
+```{r}
+Card %>%
+  group_by(STD_DD, MCT_CAT_CD) %>%
+  summarise(SUM_CNT = sum(USE_CNT), SUM_AMT = sum(USE_AMT)) %>%
+  mutate(MCT_CAT_CD = as.character(MCT_CAT_CD)) %>%
+  left_join(y = MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
+  filter(MCT_CAT_CD %in% c(21, 42, 62)) %>%
+  ungroup() %>%
+  mutate(STD_DD = as.Date(STD_DD)) %>%
+  ggplot() +
+  geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
+```
+
+레저는 미세먼지 기간에 살짝 높고, 자동차 정비는 줄고, 의복도 약간 준다.
+
+
+```{r}
+Card %>%
+  group_by(STD_DD, MCT_CAT_CD, SEX_CD, AGE) %>%
+  summarise(SUM_CNT = sum(USE_CNT), 
+            SUM_AMT = sum(USE_AMT)) %>%
+  ungroup() %>%
+  mutate(MCT_CAT_CD = as.character(MCT_CAT_CD)) %>%
+  left_join(y = MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
+  filter(MCT_CAT_CD == 21) %>%
+  mutate(STD_DD = as.Date(STD_DD)) %>%
+  ggplot() +
+  geom_line(aes(x = STD_DD, y = SUM_CNT, group = AGE, color = AGE)) +
+  facet_wrap(~SEX_CD, nrow = 2) +
+  scale_y_log10()
+```
+
+미세먼지 영향권에서 YOUTH들의 유통업, 자동차 정비건수가 줄어든다.
+레저업소, 광학, 서적문구(3월 제외), 의복, 는 보통... 차이 없음
+레저업소는 Senior에서 미세먼지 없을 때 줄어듬
+
+# 3. GS (Distribution)
+
+```{r}
+Real_Dist <- Dist %>%
+  group_by(OPER_DT, ADMD_CD) %>%
+  mutate(Real_Value = value * AMT_IND) 
+```
+
+
+```{r}
+Real_Dist %>%
+  left_join(y = Dist_Category, by = c("Category" = "CTG_CD")) %>%
+  group_by(ADMD_CD, Category) %>%
+  mutate(OPER_DT = as.Date(OPER_DT), 
+         DIFF = c(NA, diff(Real_Value))) %>%
+  filter(complete.cases(DIFF), 
+         Category == 80) %>%
+  ggplot() +
+  geom_line(aes(x = OPER_DT, y = DIFF)) +
+  facet_wrap(~BOR_CD, nrow = 2, scales = "free")
+```
+
+간식 : 미세먼지 기간에 종로에서 Variation 감소
+
+식사 : 미세먼지 기간에 전체적으로 피크
+
+마실거리 : 미세먼지 기간에  노원구에서 Variation 감소
+
+홈/리빙 : 특별한 점 없음
+
+헬스/뷰티 : 종로 미세먼지 떄 분산 감소. 노원, outlier
+
+취미/여가 : 분산 감소 (특히 종로)
+
+사회활동 : 특별한 점 없음
+
+임신 / : 미세먼지 기간에 분산 감소.
+
+ ***
+ 
+```{r}
+Real_Dist %>%
+  group_by(OPER_DT, BOR_CD, Category) %>%
+  summarise(Avg_Value = mean(Real_Value, na.rm = T)) %>%
+  left_join(y = Dist_Category, by = c("Category" = "CTG_CD")) %>%
+  ungroup() %>%
+  mutate(OPER_DT = as.Date(OPER_DT)) %>%
+  filter(Category == 80) %>%
+  ggplot() +
+  geom_line(aes(x = OPER_DT, y = Avg_Value, group = CTG_NM, color = CTG_NM)) +
+  facet_wrap(~BOR_CD, nrow = 2, scales = "free")
+```
+
+
+ * 1. 식사 : 종로에서는 미세먼지 기간에 다소 감소(피크 1번)
+             노원에서는 미세먼지 좋을 때, 매출 증가
+             
+ * 2. 간식 : 11/11, 3/14, 2/14에 피크 
+             종로/노원구 둘 다 미세먼지 기간에 감소한 것으로 보임.
+             
+ * 3. 마실거리 : 종로/노원 둘 다 미세먼지 기간에 감소한 것으로 보임.
+                 미세먼지가 좋을 때는 매출 증가
+                 
+ * 4. 홈/리빙 : 종로/노원 그래프가 다소 다른 양상. (노원에서 1/28, 10/23, 7/9 피크)
+                종로에서 미세먼지 기간에 감소.
+                
+ * 5. 헬스/뷰티 : 종로에서는 미세먼지 기간에 감소 뚜렷. 
+                  노원구는 뚜렷한 증상 없음.
+
+ * 6. 취미/여가활동 : 5/8일에 종로/노원에서 피크. 노원에서는 5/30에 살짝 피크
+                      그 외 뚜렷한 증상 없음.
+
+ * 7. 사회활동 : 종로에서 다소 미세먼지 기간에 감소 추세
+                 그 외 뚜렷한 증상 없음.
+                 
+ * 8. 임신/육아 : 종로/노원에서 미세먼지 기간에 감소추세 뚜렷.
+                
+
+```{r}
+Real_Dist %>%
+  group_by(OPER_DT, Category) %>%
+  summarise(Avg_Value = mean(Real_Value, na.rm = T)) %>%
+  separate(OPER_DT, into = c("Year", "Month", "Day")) %>%
+  mutate(Month = month.abb[as.numeric(Month)] %>%
+           factor(levels = c("Apr", "May", "Jun", "Jul", "Aug", "Sep", 
+                             "Oct", "Nov", "Dec", "Jan", "Feb", "Mar")), 
+         DUST_EFF = ifelse(Month %in% DUST_EFF_MTH, "DUST_EFF_MTH", "NO_EFF_MTH")) %>%
+  left_join(y = Dist_Category, by = c("Category" = "CTG_CD")) %>%
+  mutate(Day = as.numeric(Day)) %>%
+  ggplot() +
+  geom_line(aes(x = Day, y = Avg_Value, group = Month, color = DUST_EFF)) +
+  facet_wrap(~CTG_NM, nrow = 4, scales = "free")
+```
+
+마실거리, 식사, 임신/육아가 뚜렷하게 미세먼지 기간에 감소
+
+
+
+
