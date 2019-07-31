@@ -538,6 +538,8 @@ Blog_Pos_Table %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
 
+![Word_Cloud_Blog](https://user-images.githubusercontent.com/44796982/62190050-67935880-b3ab-11e9-835b-529400faf855.png)
+
 마스크(3637), 피부(2537), 제품(2201), 사용(2024), 때문(1612),
 공기(1591), 공기청정기(1587), 오늘(1469), 초미세먼지(1363), 우리(1210),
 차량(1170), 시간(1054)
@@ -577,11 +579,15 @@ Cafe_Pos_Table %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
 
+![Word_Cloud_Cafe](https://user-images.githubusercontent.com/44796982/62190142-9a3d5100-b3ab-11e9-8776-e173332b16be.png)
+
 마스크(731), 오늘 (658), 공기(425), 수치(405), 제품(350),
 공기청정기(349), 때문(334), 환기(300), 중국(289), 판매(279),
 초미세먼지(260), 사용(257), 경우(256), 날씨(254)
 
 블로그와 마찬가지로 실제 생활과 밀접한 단어.
+
+
 
 4-3. 뉴스
 ---------
@@ -614,6 +620,8 @@ News_Pos_Table %>%
   head(100) %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
+
+![Word_Cloud_News](https://user-images.githubusercontent.com/44796982/62190193-bc36d380-b3ab-11e9-8ca4-bb78dadb5670.png)
 
 농도(3634), 서울(3100), 전국(2393), 초미세먼지(2066), 기자(2027),
 기온(1946), 지역(1812), 수준(1762), 오늘(1375), 영향(1356), 예상(1338),
