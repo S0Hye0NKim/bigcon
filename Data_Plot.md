@@ -491,8 +491,10 @@ SNS_Dust <- SNS_Dust %>% bind_rows() %>%
   na.omit()
 ```
 
-CONTENT로 필터링 하면 미세먼지와 상관 없는 내용도 많음. TITLE에 “미세
-먼지”포함한 Row만 필터링. 제품/판매 동시에 들어간 거 삭제
+CONTENT로 필터링 하면 미세먼지와 상관 없는 내용도 많음. 
+TITLE에 “미세먼지”포함한 Row만 필터링. 
+제품/판매 동시에 들어간 거 삭제
+기타 광고문구로 추정되는 것들 Row삭제.
 
 ``` r
 pattern_DGT <-  SPC %R% one_or_more(DGT) %R% SPC %R% one_or_more(DGT) %R% SPC %R% 
@@ -515,8 +517,7 @@ SNS_Dust <- SNS_Dust %>%
 ```
 
 URL 복사 이웃추가 본문 기타 기능 지도로 보기 전체지도지도닫기 번역보기
-
-양이 너무 많아서 블로그 / 카페 / 뉴스 별로 나누어서 Word Cloud
+Blog, Cafe, News에서 특정한 양식들의 경우 공백으로 바꿔줘서 양식을 제외한 순수한 내용만 남도록 함.
 
 4-1. 블로그
 -----------
@@ -534,8 +535,7 @@ Blog_Pos_tag <- SimplePos09(sample(Blog_Content, size = 3000))
 ```
 
 261에서 에러 277에서 에러 -\> 띄어쓰기 문제로 에러 메세지 출력.
-KoSpacing사용해보려고 했으나 실패. 172044개의 Content vector. 너무
-많아서 sampling 3000개만 형태소 분석.
+너무 Row가 많아서 sampling 3000개만 형태소 분석.
 
 ``` r
 Blog_Pos_Table <- Blog_Pos_tag %>% 
@@ -553,6 +553,9 @@ Blog_Pos_Table %>%
   head(30) %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
+![Word_Cloud_Blog](https://user-images.githubusercontent.com/44796982/62297515-5b42f480-b4ac-11e9-8e26-7dd904bb4f2c.png)
+
+Blog_Pos_Table에서 상위 15개 빈도수.
 
 마스크(2219) 오늘(1477), 공기(1312), 때문(1304), 농도(1256), 우리(1170),
 초미세먼지(1074), 중국(992), 공기청정기(967), 피부(948), 경우(877),
@@ -604,6 +607,10 @@ bigram_df %>%
   geom_node_text(aes(label=name))
 ```
 
+![SNA_Blog](https://user-images.githubusercontent.com/44796982/62297565-744ba580-b4ac-11e9-818f-708e4c5af422.png)
+
+Blog 데이터에서 앞뒤로 붙어있는 단어(순서 있음)의 조합 TOP 20
+
 4-2. 카페
 ---------
 
@@ -635,6 +642,10 @@ Cafe_Pos_Table %>%
   head(30) %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
+
+![Word_Cloud_Cafe](https://user-images.githubusercontent.com/44796982/62297654-96452800-b4ac-11e9-863c-c95275f5bdfc.png)
+
+Cafe_Pos_Table 데이터에서 자주 나오는 상위 15개 단어
 
 오늘(679), 마스크(515), 수치(428), 공기(335), 초미세먼지(283),
 환기(267), 우리(259) 아이들(257), 날씨(253), 농도(252), 공기청정기(244),
@@ -688,6 +699,11 @@ bigram_df %>%
   geom_node_text(aes(label=name))
 ```
 
+![SNA_Cafe](https://user-images.githubusercontent.com/44796982/62297757-bbd23180-b4ac-11e9-8f89-1d8d307ce4ef.png)
+
+Cafe 데이터에서 앞뒤로 연결된 단어들의 빈도수 TOP 20
+
+
 4-3. 뉴스
 ---------
 
@@ -719,6 +735,9 @@ News_Pos_Table %>%
   head(30) %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
+
+![Word_Cloud_News](https://user-images.githubusercontent.com/44796982/62297856-e02e0e00-b4ac-11e9-8f94-068ac3a36274.png)
+
 
 오늘(679), 마스크(515), 수치(428), 공기(335), 초미세먼지(283),
 환기(267), 우리(259), 아이들(257), 날씨(253), 농도(252),
@@ -773,6 +792,9 @@ bigram_df %>%
   geom_node_text(aes(label=name))
 ```
 
+![SNA_News_City_Included](https://user-images.githubusercontent.com/44796982/62297889-f1771a80-b4ac-11e9-8958-6cd9c4346807.png)
+
+
 지역 제외하고 다시 SNA
 
 ``` r
@@ -787,3 +809,7 @@ bigram_df %>%
   geom_edge_link(aes(start_cap = label_rect(node1.name), end_cap = label_rect(node2.name))) +
   geom_node_text(aes(label=name))
 ```
+
+![SNA_News_City_Excluded](https://user-images.githubusercontent.com/44796982/62297918-fb991900-b4ac-11e9-9b8b-2c41b4b402c7.png)
+
+
