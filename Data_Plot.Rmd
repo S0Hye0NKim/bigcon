@@ -19,8 +19,11 @@ library(reshape2)
 library(wordcloud2)
 library(rJava)
 library(KoSpacing)
+library(igraph)
+library(data.table)
+library(ggraph)
+library(tidygraph)
 load("Data_Cleansing.RData")
-useSejongDic()
 useNIADic()
 ```
 
@@ -472,29 +475,49 @@ Real_Dist %>%
 ```{r}
 SNS_Dust <- list()
 Dust_Word <- c("미세" %R% optional(SPC) %R% "먼지")
+Ad_Word <- "중고차|수제청|고객님"
+Cafe_Ad <- "거래방법 직접거래 배송방법 판매자와 직접 연락하세요|홀소세생태보존연구소|아래 링크|만원국내산"
 
 for(i in 1:length(SNS)) {
   Data <- SNS[[i]]
-  idx <- which(Data$TITLE %>% str_detect(pattern = Dust_Word))
+  idx_Dust <- which(Data$TITLE %>% str_detect(pattern = Dust_Word))
+  idx_rmv <- (Data$CONTENT %>% str_detect("제품") & Data$CONTENT %>% str_detect("사용")) %>% 
+    which()
+  idx_ad <- Data$CONTENT %>% str_detect(paste0(Ad_Word, "|", Cafe_Ad)) %>% which
+  idx <- setdiff(idx_Dust, idx_rmv) %>% setdiff(idx_ad)
   SNS_Dust[[i]] <- Data[idx, ]
 }
 
-SNS_Dust <- SNS_Dust %>% bind_rows()
+SNS_Dust <- SNS_Dust %>% bind_rows() %>%
+  na.omit()
 ```
 
 CONTENT로 필터링 하면 미세먼지와 상관 없는 내용도 많음.
 TITLE에 "미세 먼지"포함한 Row만 필터링.
+제품/판매 동시에 들어간 거 삭제
 
 ```{r}
 pattern_DGT <-  SPC %R% one_or_more(DGT) %R% SPC %R% one_or_more(DGT) %R% SPC %R% 
   one_or_more(DGT) %R% SPC %R% one_or_more(DGT) %R% SPC
+pattern_Blog1 <- "URL 복사 이웃추가 본문 기타 기능 번역보기"
+pattern_Blog2 <- "복사 이웃추가 본문 기타 기능 지도로|보기 전체지도지도닫기 번역보기"
+pattern_Blog3 <- "저장 관심 장소를 MY플레이스에 저장할 수 있어요 팝업 닫기 내 장소 폴더에 저장했습니다 MY플레이스 가기 팝업 닫기 전화 상세보기"
+pattern_Cafe1 <- "작성 전 필독 공지|잠깐 게시글|카페규정|게시판별 운영 정책|무통보 삭제|카페 규정"
+pattern_Cafe2 <- "일산아지매는 배려입니다 당신의|한마디가 카페를 만들어갑니다"
+pattern_News1 <- char_class("가-힣") %>% one_or_more %R% optional(SPC) %R% "기자"
+pattern_News2 <- "무단전재 및 재배포 금지"
+
   
 SNS_Dust <- SNS_Dust %>% 
   mutate(CONTENT = str_remove_all(CONTENT, 
-                                  pattern = "URL 복사 이웃추가 본문 기타 기능 번역보기"), 
-         CONTENT = str_remove_all(CONTENT, pattern = pattern_DGT))
+                                  pattern = paste0(pattern_DGT, "|", pattern_Blog1, "|",
+                                                   pattern_Blog2, "|", pattern_Blog3, "|", 
+                                                   pattern_Cafe1, "|", pattern_Cafe2, "|", 
+                                                   pattern_News1, "|", pattern_News2)))
 ```
 
+
+URL 복사 이웃추가 본문 기타 기능 지도로 보기 전체지도지도닫기 번역보기
 
 양이 너무 많아서 블로그 / 카페 / 뉴스 별로 나누어서 Word Cloud
 
@@ -515,7 +538,7 @@ Blog_Pos_tag <- SimplePos09(sample(Blog_Content, size = 3000))
 261에서 에러
 277에서 에러
 -> 띄어쓰기 문제로 에러 메세지 출력. KoSpacing사용해보려고 했으나 실패.
-38526개의 Content vector. 너무 많아서 sampling 3000개만 형태소 분석.
+172044개의 Content vector. 너무 많아서 sampling 3000개만 형태소 분석.
 
 ```{r eval = FALSE}
 Blog_Pos_Table <- Blog_Pos_tag %>% 
@@ -531,21 +554,69 @@ Blog_Pos_Table <- Blog_Pos_tag %>%
 
 ```{r eval = FALSE}
 Blog_Pos_Table %>% 
-  head(100) %>%
+  head(30) %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
 
 
 
-마스크(3637), 피부(2537), 제품(2201), 사용(2024), 때문(1612), 공기(1591), 공기청정기(1587), 오늘(1469), 초미세먼지(1363), 우리(1210), 차량(1170), 시간(1054)
+마스크(2219) 오늘(1477), 공기(1312), 때문(1304), 농도(1256), 우리(1170), 초미세먼지(1074), 중국(992), 공기청정기(967), 피부(948), 경우(877), 건강(875), 날씨(829), 시간(825), 황사(752)
 
-마스크, 피부, 때문, 사용, 공기청정기 등 실제 생활에 있어서 미세먼지 예방과 대책에 초점.
+
+```{r eval = FALSE}
+Blog_Pos_Table <- Blog_Pos_tag %>%
+  unlist %>% unname() %>%
+  tbl_df %>%
+  mutate(noun=str_match(value, '([가-힣]+)/N')[,2]) %>%
+  na.omit() %>%
+  filter(str_length(noun) >= 2) %>%
+  count(noun, sort = TRUE) %>%
+  filter(!noun == "미세먼지")
+
+len_sublist <- vector()
+for(i in 1:length(Blog_Pos_tag)) {
+  idx_sublist <- rep(i, length(Blog_Pos_tag[[i]]))
+  len_sublist <- c(len_sublist, idx_sublist)
+  }
+
+Blog_Word_Connection <- Blog_Pos_tag %>%
+  unlist %>% unname() %>%
+  tbl_df %>%
+  mutate(noun=str_match(value, '([가-힣]+)/N')[,2],
+         idx = len_sublist) %>%
+  na.omit() %>%
+  filter(str_length(noun) >= 2)
+
+bigram_df <- Blog_Word_Connection %>%
+  select(noun) %>%
+  mutate(lead = lead(noun)) %>%
+  unite(bigram, c(noun, lead), sep = " ")
+
+DT_bigram <- data.table(bigram_df)
+
+bigram_df <- DT_bigram[, .(n = .N), by = bigram] %>% tbl_df() %>%
+  separate(bigram, c("word1", "word2")) %>%
+  arrange(-n) %>%
+  filter(word1 != "미세먼지", word2 != "미세먼지")
+```
+
+
+```{r message = FALSE, eval = FALSE}
+bigram_df %>%
+  head(20) %>%
+  as_tbl_graph %>%
+  ggraph() +
+  geom_edge_link(aes(start_cap = label_rect(node1.name), end_cap = label_rect(node2.name))) +
+  geom_node_text(aes(label=name))
+```
+
+
 
 ## 4-2. 카페
 
 카페 자료.
 
-```{r message = FALSE, warning = FALSE, eval = FALSE}
+```{r message = FALSE, warning = FALSE, eval = FALSE, error = FALSE}
 set.seed(0)
 Cafe <- SNS_Dust %>%
   filter(SECTION == "카페")
@@ -569,22 +640,69 @@ Cafe_Pos_Table <- Cafe_Pos_tag %>%
 
 ```{r eval = FALSE}
 Cafe_Pos_Table %>% 
-  head(100) %>%
+  head(30) %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
 
 
-
-마스크(731), 오늘 (658), 공기(425), 수치(405), 제품(350), 공기청정기(349), 때문(334), 환기(300), 중국(289), 판매(279), 초미세먼지(260), 사용(257), 경우(256), 날씨(254)
+오늘(679), 마스크(515), 수치(428), 공기(335), 초미세먼지(283), 환기(267), 우리(259) 아이들(257), 날씨(253), 농도(252), 공기청정기(244), 때문(230), 예보(215), 오후(187), 중국(186)
 
 블로그와 마찬가지로 실제 생활과 밀접한 단어.
+
+```{r eval = FALSE}
+Cafe_Pos_Table <- Cafe_Pos_tag %>%
+  unlist %>% unname() %>%
+  tbl_df %>%
+  mutate(noun=str_match(value, '([가-힣]+)/N')[,2]) %>%
+  na.omit() %>%
+  filter(str_length(noun) >= 2) %>%
+  count(noun, sort = TRUE) %>%
+  filter(!noun == "미세먼지")
+
+len_sublist <- vector()
+for(i in 1:length(Cafe_Pos_tag)) {
+  idx_sublist <- rep(i, length(Cafe_Pos_tag[[i]]))
+  len_sublist <- c(len_sublist, idx_sublist)
+  }
+
+Cafe_Word_Connection <- Cafe_Pos_tag %>%
+  unlist %>% unname() %>%
+  tbl_df %>%
+  mutate(noun=str_match(value, '([가-힣]+)/N')[,2],
+         idx = len_sublist) %>%
+  na.omit() %>%
+  filter(str_length(noun) >= 2)
+
+bigram_df <- Cafe_Word_Connection %>%
+  select(noun) %>%
+  mutate(lead = lead(noun)) %>%
+  unite(bigram, c(noun, lead), sep = " ")
+
+DT_bigram <- data.table(bigram_df)
+
+bigram_df <- DT_bigram[, .(n = .N), by = bigram] %>% tbl_df() %>%
+  separate(bigram, c("word1", "word2")) %>%
+  arrange(-n) %>%
+  filter(word1 != "미세먼지", word2 != "미세먼지")
+```
+
+
+```{r message = FALSE, eval = FALSE}
+bigram_df %>%
+  head(20) %>%
+  as_tbl_graph %>%
+  ggraph() +
+  geom_edge_link(aes(start_cap = label_rect(node1.name), end_cap = label_rect(node2.name))) +
+  geom_node_text(aes(label=name))
+```
+
 
 ## 4-3. 뉴스
 
 
 뉴스 자료
 
-```{r warning=FALSE, message = FALSE, eval = FALSE}
+```{r warning=FALSE, message = FALSE, eval = FALSE, error=FALSE}
 set.seed(0)
 News <- SNS_Dust %>%
   filter(SECTION == "뉴스")
@@ -607,16 +725,78 @@ News_Pos_Table <- News_Pos_tag %>%
 
 ```{r eval = FALSE}
 News_Pos_Table %>% 
-  head(100) %>%
+  head(30) %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
 
-
-농도(3634), 서울(3100), 전국(2393), 초미세먼지(2066), 기자(2027), 기온(1946), 지역(1812), 수준(1762), 오늘(1375), 영향(1356), 예상(1338), 오후(1300), 아침(1229), 날씨(1214), 마스크(1147), 오전(1138), 저감(1053), 중국(968), 대구(953), 부산(923), 광주(878), 대전(849), 제주도(814), 제주(754), 수도권(738), 인천(735), 춘천(582), 공기청정기(573), 전주(567), 강릉(549)
+오늘(679), 마스크(515), 수치(428), 공기(335), 초미세먼지(283), 환기(267), 우리(259), 아이들(257), 날씨(253), 농도(252), 공기청정기(244), 때문(230), 예보(215), 오후(187), 중국(186)
 
 
 일기예보 영향인지, 지역명 / 시간을 나타내는 단어 다수 출몰.
 영향과 예상과 관련된 단어가 다수 보임.
 지역명을 제외하고 다시 SNA
+
+```{r eval = FALSE}
+News_Pos_Table <- Cafe_Pos_tag %>%
+  unlist %>% unname() %>%
+  tbl_df %>%
+  mutate(noun=str_match(value, '([가-힣]+)/N')[,2]) %>%
+  na.omit() %>%
+  filter(str_length(noun) >= 2) %>%
+  count(noun, sort = TRUE) %>%
+  filter(!noun == "미세먼지")
+
+len_sublist <- vector()
+for(i in 1:length(News_Pos_tag)) {
+  idx_sublist <- rep(i, length(News_Pos_tag[[i]]))
+  len_sublist <- c(len_sublist, idx_sublist)
+  }
+
+News_Word_Connection <- News_Pos_tag %>%
+  unlist %>% unname() %>%
+  tbl_df %>%
+  mutate(noun=str_match(value, '([가-힣]+)/N')[,2],
+         idx = len_sublist) %>%
+  na.omit() %>%
+  filter(str_length(noun) >= 2)
+
+bigram_df <- News_Word_Connection %>%
+  select(noun) %>%
+  mutate(lead = lead(noun)) %>%
+  unite(bigram, c(noun, lead), sep = " ")
+
+DT_bigram <- data.table(bigram_df)
+
+bigram_df <- DT_bigram[, .(n = .N), by = bigram] %>% tbl_df() %>%
+  separate(bigram, c("word1", "word2")) %>%
+  arrange(-n) %>%
+  filter(word1 != "미세먼지", word2 != "미세먼지")
+```
+
+
+```{r message = FALSE, eval = FALSE}
+bigram_df %>%
+  head(20) %>%
+  as_tbl_graph %>%
+  ggraph() +
+  geom_edge_link(aes(start_cap = label_rect(node1.name), end_cap = label_rect(node2.name))) +
+  geom_node_text(aes(label=name))
+```
+
+
+지역 제외하고 다시 SNA
+
+```{r message = FALSE, eval = FALSE}
+City <- c("제주", "부산", "대구", "광주", "전주", "대전", "청주", "서울", "인천", "청주", "강릉", 
+          "춘천")
+
+bigram_df %>%
+  filter(!(word1 %in% City & word2 %in% City)) %>%
+  head(20) %>%
+  as_tbl_graph %>%
+  ggraph() +
+  geom_edge_link(aes(start_cap = label_rect(node1.name), end_cap = label_rect(node2.name))) +
+  geom_node_text(aes(label=name))
+```
 
 
