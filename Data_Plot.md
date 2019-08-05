@@ -14,15 +14,22 @@ library(igraph)
 library(data.table)
 library(ggraph)
 library(tidygraph)
+library(readxl)
 load("Data_Cleansing.RData")
+loc_Wth_Jongno <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
+                     range = "B1:E32", sheet = 2) 
+loc_Wth_Nowon <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
+                     range = "H1:K23", sheet = 2) 
+loc_Wth <- rbind(loc_Wth_Jongno, loc_Wth_Nowon) %>%
+  select(serial = "스테이션", location = "위치", HDONG_NM = "행정동")
 useNIADic()
 ```
 
     ## Backup was just finished!
     ## 983012 words dictionary was built.
 
-0. Weather
-==========
+Weather
+=======
 
 K-Weather에서 제공한 날씨 데이터.
 
@@ -141,8 +148,8 @@ Dust_Wrn %>%
 
 12/15 -3/12 초미세먼지 경보 지속적으로 발령 12-3월까지는 미세먼지 영향권
 
-1. SK
-=====
+SK
+==
 
 SK에서 제공한 유동인구 데이터(미완)
 
@@ -161,56 +168,110 @@ Date, Sex로 하고 Avg\_pop을 더하면 정수가 나온다.
 Avg\_pop 구하는 데에 연관이 있을 것으로 사료됨.
 
 ``` r
-ggplot(APR %>% filter(HDONG_CD == "1111061500")) +
-  geom_line(aes(x = Date, y = Avg_pop, group = Age, color = Age)) +
-  scale_y_log10() +
-  facet_wrap(~Sex, ncol = 1)  +
-  ggtitle("종로1,2,3,4가동 4월 유동인구")
+DUST_EFF_MTH <- c("Dec", "Jan", "Feb")
+
+SK_Age_Modified <- SK_Age %>%
+  lapply(FUN = function(x) x %>% 
+           gather(key = "Type", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
+           separate(Type, into = c("Sex", "Age"), sep = "_FLOW_POP_CNT_") %>%
+           mutate(Date = as.Date(STD_YMD), Avg_pop = as.numeric(Avg_pop))) %>%
+  bind_rows(.id = "MONTH") %>%
+  mutate(HDONG_CD = str_remove_all(HDONG_CD, pattern = DGT %R% DGT %R% END), 
+         Age = str_extract(Age, pattern = START %R% DGT %R% DGT), 
+         AGE_CTG = case_when(Age < 20 ~ "Youth", 
+                         Age %in% 20:39 ~ "Rising", 
+                         Age %in% 40:59 ~ "Middle", 
+                         Age >= 60 ~ "Senior"), 
+         AGE_CTG = factor(AGE_CTG, levels = c("Youth", "Rising", "Middle", "Senior")))
+
+SK_Age_Modified %>%
+  separate(STD_YMD, into = c("Year", "Month", "Day")) %>%
+  group_by(MONTH, Day, AGE_CTG) %>%
+  summarise(Mean = mean(Avg_pop)) %>%
+  ggplot() +
+  geom_line(aes(x = Day, y = Mean, group = AGE_CTG, color = AGE_CTG)) +
+  facet_wrap(~MONTH, nrow = 4)
 ```
 
-1111061500 is code for “종로1,2,3,4가동” Youth is dropped because It is
-too samll.
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-8-1.png)
+
+일요일/공휴일에는 유동인구 수 감소. 5/22일(석가탄신일), 6/13(지방선거),
+9/24-26(추석), 10/25, 1/10, 2/4-2/6(설날) 에는 급감 성별간 차이 없음.
+
+Youth 제외하고는 동일한 라인. (연령대 차이 없음) 성별 차이 없음.
 
 ``` r
-APR_Time <- SK_Time[[1]]
+DUST_EFF_MTH <- c("Dec", "Jan", "Feb", "Mar")
 
-APR_Time %>% filter(HDONG_CD == "1111061500", 
-                    STD_YMD %in% c("2018-04-11", "2018-04-14", "2018-04-15")) %>%
-  gather(key = "Time", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
-  mutate(Time = parse_number(Time), Avg_pop = as.numeric(Avg_pop)) %>%
+SK_Age_Modified %>%
+  separate(STD_YMD, into = c("Year", "Month", "Day")) %>%
+  group_by(MONTH, Day) %>%
+  summarise(SUM = sum(Avg_pop)) %>%
+  mutate(DUST_EFF = ifelse(MONTH %in% DUST_EFF_MTH, "DUST_EFF_MTH", "NO_EFF")) %>%
   ggplot() +
-  geom_line(aes(x = Time, y = Avg_pop, group = STD_YMD, color = STD_YMD)) +
-  scale_y_log10() +
-  guides(color = guide_legend(title = "Day"))
+  geom_line(aes(x = Day, y = SUM, group = MONTH, color = DUST_EFF)) +
+  scale_y_log10()
 ```
 
 ![](Data_Plot_files/figure-markdown_github/unnamed-chunk-9-1.png)
 
-2018-04-11 is WED. 2018-04-14 is SAT 2018-04-15 is SUN
+미세먼지 많은 달에 유동인구 수 감소.
 
 ``` r
-APR_Time <- SK_Time[[1]]
-
-APR_Time %>%
-  gather(key = "Time", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
-  mutate(Time = parse_number(Time), Avg_pop = as.numeric(Avg_pop), 
-         Week_Day = strftime(STD_YMD, "%a")) %>%
-  group_by(STD_YMD) %>%
-  summarise(Sum = sum(Avg_pop))
+SK_Time_Modified <- SK_Time %>% 
+  lapply(FUN = function(x) x %>%
+           gather(key = "Time", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
+           mutate(Time = parse_number(Time), Avg_pop = as.numeric(Avg_pop))) %>%
+  bind_rows() %>%
+  mutate(Week_Day = strftime(STD_YMD, "%a"))
 ```
+
+``` r
+SK_Time_Modified %>%
+  separate(STD_YMD, into = c("Year", "Month", "Day")) %>%
+  mutate(Month = month.abb[as.numeric(Month)], 
+         Week_Day = factor(Week_Day, levels = c("월", "화", "수", "목", "금", "토", "일"))) %>%
+  group_by(Time, Week_Day, Month) %>%
+  summarise(SUM = sum(Avg_pop)) %>%
+  ggplot() +
+  geom_line(aes(x = Time, y = SUM, group = Month, color = Month)) +
+  facet_wrap(~Week_Day, nrow = 3, ncol = 3)
+```
+
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-11-1.png)
+
+``` r
+SK_Time_Modified %>%
+  separate(STD_YMD, into = c("Year", "Month", "Day")) %>%
+  mutate(Month = month.abb[as.numeric(Month)], 
+         Week_Day = factor(Week_Day, levels = c("월", "화", "수", "목", "금", "토", "일")), 
+         DUST_EFF = ifelse(Month %in% DUST_EFF_MTH, "DUST_EFF", "NO_EFF")) %>%
+  group_by(Time, Week_Day, Month, DUST_EFF) %>%
+  summarise(MEAN = mean(Avg_pop)) %>%
+  ggplot() +
+  geom_line(aes(x = Time, y = MEAN, group = Month, color = DUST_EFF)) +
+  facet_wrap(~Week_Day, nrow = 3, ncol = 3)
+```
+
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-12-1.png)
+
+미세먼지 영향권 달에는 확실히 유동인구 합이 줄어든다.
 
 -\> STD\_YMD로 grouping하고 sum하면 정수가 나온다…?
 
 -   Avg\_pop 계산하는 거 구해서 요일별/시간대별로 line 찍기
 
+우선 Avg\_pop을 지수로 사용. 현재 count 데이터 소수점 질문. 주최측 답변
+오면 수정 요망.
+
 2. Card
-=======
+-------
 
 신한카드에서 제공한 카드 매출 데이터.
 
 ``` r
-Rising <- c(25, 30, 35)
-Middle <- c(40, 45, 50, 55)
+Rising <- c(25, 30, 35) # Twenties, Thirties
+Middle <- c(40, 45, 50, 55) #Forties, Fifties
 Senior <- c(60, 65)
 
 Card <- Card %>%
@@ -252,7 +313,7 @@ left_join(Smr_Card, MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
   scale_y_log10()
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-13-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-15-1.png)
 
 미세먼지 영향권 달에 (광학제품, 레저업소, 서적문구) 는 매출건이 많고,
 (유통업, 의복, 자동차 정비)는 건수가 줄어든다.
@@ -272,7 +333,7 @@ left_join(Smr_Card, MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
   scale_y_log10()
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-14-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 ``` r
 Card %>%
@@ -287,7 +348,7 @@ Card %>%
   geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-17-1.png)
 
 (유통업) 12-3월까지 낮다.
 
@@ -304,7 +365,7 @@ Card %>%
   geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-18-1.png)
 
 서적 / 문구는 미세먼지 기간에 살짝 높다.
 
@@ -321,7 +382,7 @@ Card %>%
   geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-17-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
 광학은 미세먼지 기간에 살짝 높다.
 
@@ -338,7 +399,7 @@ Card %>%
   geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-18-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-20-1.png)
 
 레저는 미세먼지 기간에 살짝 높고, 자동차 정비는 줄고, 의복도 약간 준다.
 
@@ -358,14 +419,14 @@ Card %>%
   scale_y_log10()
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-19-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-21-1.png)
 
 미세먼지 영향권에서 YOUTH들의 유통업, 자동차 정비건수가 줄어든다.
 레저업소, 광학, 서적문구(3월 제외), 의복, 는 보통… 차이 없음 레저업소는
 Senior에서 미세먼지 없을 때 줄어듬
 
 3. GS (Distribution)
-====================
+--------------------
 
 GS에서 제공한 유통데이터.
 
@@ -388,7 +449,7 @@ Real_Dist %>%
   facet_wrap(~BOR_CD, nrow = 2, scales = "free")
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-21-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-23-1.png)
 
 간식 : 미세먼지 기간에 종로에서 Variation 감소
 
@@ -421,7 +482,7 @@ Real_Dist %>%
   facet_wrap(~BOR_CD, nrow = 2, scales = "free")
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-22-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-24-1.png)
 
 -   1.  식사 : 종로에서는 미세먼지 기간에 다소 감소(피크 1번) 노원에서는
         미세먼지 좋을 때, 매출 증가
@@ -462,12 +523,12 @@ Real_Dist %>%
   facet_wrap(~CTG_NM, nrow = 4, scales = "free")
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-23-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-25-1.png)
 
 마실거리, 식사, 임신/육아가 뚜렷하게 미세먼지 기간에 감소
 
 4. SNS
-======
+------
 
 와이즈넛에서 제공한 SNS 데이터.
 
@@ -491,10 +552,8 @@ SNS_Dust <- SNS_Dust %>% bind_rows() %>%
   na.omit()
 ```
 
-CONTENT로 필터링 하면 미세먼지와 상관 없는 내용도 많음. 
-TITLE에 “미세먼지”포함한 Row만 필터링. 
-제품/판매 동시에 들어간 거 삭제
-기타 광고문구로 추정되는 것들 Row삭제.
+CONTENT로 필터링 하면 미세먼지와 상관 없는 내용도 많음. TITLE에 “미세
+먼지”포함한 Row만 필터링. 제품/판매 동시에 들어간 거 삭제
 
 ``` r
 pattern_DGT <-  SPC %R% one_or_more(DGT) %R% SPC %R% one_or_more(DGT) %R% SPC %R% 
@@ -517,10 +576,10 @@ SNS_Dust <- SNS_Dust %>%
 ```
 
 URL 복사 이웃추가 본문 기타 기능 지도로 보기 전체지도지도닫기 번역보기
-Blog, Cafe, News에서 특정한 양식들의 경우 공백으로 바꿔줘서 양식을 제외한 순수한 내용만 남도록 함.
 
-4-1. 블로그
------------
+양이 너무 많아서 블로그 / 카페 / 뉴스 별로 나누어서 Word Cloud
+
+### 4-1. 블로그
 
 블로그 자료.
 
@@ -535,7 +594,8 @@ Blog_Pos_tag <- SimplePos09(sample(Blog_Content, size = 3000))
 ```
 
 261에서 에러 277에서 에러 -\> 띄어쓰기 문제로 에러 메세지 출력.
-너무 Row가 많아서 sampling 3000개만 형태소 분석.
+KoSpacing사용해보려고 했으나 실패. 172044개의 Content vector. 너무
+많아서 sampling 3000개만 형태소 분석.
 
 ``` r
 Blog_Pos_Table <- Blog_Pos_tag %>% 
@@ -553,9 +613,8 @@ Blog_Pos_Table %>%
   head(30) %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
-![Word_Cloud_Blog](https://user-images.githubusercontent.com/44796982/62297515-5b42f480-b4ac-11e9-8e26-7dd904bb4f2c.png)
 
-Blog_Pos_Table에서 상위 15개 빈도수.
+![Word\_Cloud\_Blog](https://user-images.githubusercontent.com/44796982/62297515-5b42f480-b4ac-11e9-8e26-7dd904bb4f2c.png)
 
 마스크(2219) 오늘(1477), 공기(1312), 때문(1304), 농도(1256), 우리(1170),
 초미세먼지(1074), 중국(992), 공기청정기(967), 피부(948), 경우(877),
@@ -607,12 +666,9 @@ bigram_df %>%
   geom_node_text(aes(label=name))
 ```
 
-![SNA_Blog](https://user-images.githubusercontent.com/44796982/62297565-744ba580-b4ac-11e9-818f-708e4c5af422.png)
+![SNA\_Blog](https://user-images.githubusercontent.com/44796982/62297565-744ba580-b4ac-11e9-818f-708e4c5af422.png)
 
-Blog 데이터에서 앞뒤로 붙어있는 단어(순서 있음)의 조합 TOP 20
-
-4-2. 카페
----------
+### 4-2. 카페
 
 카페 자료.
 
@@ -643,9 +699,7 @@ Cafe_Pos_Table %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
 
-![Word_Cloud_Cafe](https://user-images.githubusercontent.com/44796982/62297654-96452800-b4ac-11e9-863c-c95275f5bdfc.png)
-
-Cafe_Pos_Table 데이터에서 자주 나오는 상위 15개 단어
+![Word\_Cloud\_Cafe](https://user-images.githubusercontent.com/44796982/62297654-96452800-b4ac-11e9-863c-c95275f5bdfc.png)
 
 오늘(679), 마스크(515), 수치(428), 공기(335), 초미세먼지(283),
 환기(267), 우리(259) 아이들(257), 날씨(253), 농도(252), 공기청정기(244),
@@ -699,13 +753,9 @@ bigram_df %>%
   geom_node_text(aes(label=name))
 ```
 
-![SNA_Cafe](https://user-images.githubusercontent.com/44796982/62297757-bbd23180-b4ac-11e9-8f89-1d8d307ce4ef.png)
+![SNA\_Cafe](https://user-images.githubusercontent.com/44796982/62297757-bbd23180-b4ac-11e9-8f89-1d8d307ce4ef.png)
 
-Cafe 데이터에서 앞뒤로 연결된 단어들의 빈도수 TOP 20
-
-
-4-3. 뉴스
----------
+### 4-3. 뉴스
 
 뉴스 자료
 
@@ -736,8 +786,7 @@ News_Pos_Table %>%
   wordcloud2(fontFamily='Noto Sans CJK KR Bold', minRotation = 0, maxRotation = 0)
 ```
 
-![Word_Cloud_News](https://user-images.githubusercontent.com/44796982/62297856-e02e0e00-b4ac-11e9-8f94-068ac3a36274.png)
-
+![Word\_Cloud\_News](https://user-images.githubusercontent.com/44796982/62297856-e02e0e00-b4ac-11e9-8f94-068ac3a36274.png)
 
 오늘(679), 마스크(515), 수치(428), 공기(335), 초미세먼지(283),
 환기(267), 우리(259), 아이들(257), 날씨(253), 농도(252),
@@ -792,8 +841,7 @@ bigram_df %>%
   geom_node_text(aes(label=name))
 ```
 
-![SNA_News_City_Included](https://user-images.githubusercontent.com/44796982/62297889-f1771a80-b4ac-11e9-8958-6cd9c4346807.png)
-
+![SNA\_News\_City\_Included](https://user-images.githubusercontent.com/44796982/62297889-f1771a80-b4ac-11e9-8958-6cd9c4346807.png)
 
 지역 제외하고 다시 SNA
 
@@ -810,6 +858,4 @@ bigram_df %>%
   geom_node_text(aes(label=name))
 ```
 
-![SNA_News_City_Excluded](https://user-images.githubusercontent.com/44796982/62297918-fb991900-b4ac-11e9-9b8b-2c41b4b402c7.png)
-
-
+![SNA\_News\_City\_Excluded](https://user-images.githubusercontent.com/44796982/62297918-fb991900-b4ac-11e9-9b8b-2c41b4b402c7.png)
