@@ -16,6 +16,8 @@ library(ggraph)
 library(tidygraph)
 library(readxl)
 load("Data_Cleansing.RData")
+Wth_obs <- readRDS("Wth_obs.rds")
+source("https://raw.githubusercontent.com/S0Hye0NKim/bigcon/master/bigcon_function.R")
 loc_Wth_Jongno <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
                      range = "B1:E32", sheet = 2) 
 loc_Wth_Nowon <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
@@ -34,34 +36,37 @@ Weather
 K-Weather에서 제공한 날씨 데이터.
 
 ``` r
+Jongno_obs <- Wth_Jongno %>% lapply(FUN = function(x) x %>%
+                                        select(-flag, -co2, -vocs) %>% mutate_all(as.character)) %>%
+  bind_rows %>% na.omit()
+
+Nowon_obs <- Wth_Nowon %>% lapply(FUN = function(x) x %>% 
+                                      select(-flag, -co2, -vocs) %>% mutate_all(as.character))  %>%
+  bind_rows()
+
+Wth_obs <- bind_rows(Jongno_obs, Nowon_obs)
+```
+
+``` r
+DT_Wth_obs <- data.table(Wth_obs)
+
+DT_Wth_CTG <- DT_Wth_obs[, .(Day, Hour, serial, temp, pm10_CTG = Classify_Dust_lev(pm10, tiny = 10), 
+               pm25_CTG = Classify_Dust_lev(pm25, tiny = 25)), ]
+
+Wth_obs_CTG <- DT_Wth_CTG[, .(pm10_CTG = Mode(pm10_CTG), pm25_CTG = Mode(pm25_CTG)), by = .(Day)] %>%
+  tbl_df
+```
+
+``` r
 Dust_lev <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
 
-Weather <- Wth_Jongno[[12]] %>%
-  mutate(pm10 = as.numeric(pm10), 
-         pm25 = as.numeric(pm25), 
-         pm10 = case_when((pm10 <= 30) ~ "Good", 
-                          (pm10>30 & pm10<=50) ~ "Moderate", 
-                          (pm10>50 & pm10<=75) ~ "Sens_Unhealthy", 
-                          (pm10>75 & pm10<=100) ~ "Unhealthy", 
-                          (pm10>100 & pm10<=150) ~ "Very Unhealthy", 
-                          (pm10>150) ~ "Worst"), 
-         pm25 = case_when((pm25 <= 15) ~ "Good", 
-                          (pm25>15 & pm25<=25) ~ "Moderate", 
-                          (pm25>25 & pm25<=37) ~ "Sens_Unhealthy", 
-                          (pm25>37 & pm25<=50) ~ "Unhealthy", 
-                          (pm25>50 & pm25<=75) ~ "Very Unhealthy", 
-                          (pm25>75) ~ "Worst")) %>%
+Weather <- Wth_obs_CTG %>%
   separate(col = Day, into = c("Year", "Month", "Day")) %>%
   group_by(Year, Month, Day)
 
 Smr_Wth <- Weather %>%
-  summarise(pm10 = which.max(table(pm10)) %>% names(), 
-            pm25 = which.max(table(pm25)) %>% names(), 
-            avg_noise = mean(noise), 
-            avg_temp = mean(temp), 
-            avg_humi = mean(humi)) %>%
-  mutate(pm10 = factor(pm10, levels = Dust_lev), 
-         pm25 = factor(pm25, levels = Dust_lev)) %>%
+  mutate(pm10_CTG = factor(pm10_CTG, levels = Dust_lev), 
+         pm25_CTG = factor(pm25_CTG, levels = Dust_lev)) %>%
   ungroup() %>%
   mutate(Month = month.abb[as.numeric(Month)] %>%
            factor(levels = c("Apr", "May", "Jun", "Jul", "Aug", "Sep", 
@@ -75,14 +80,14 @@ temp, humi) “미세미세” 어플 기준으로 구간 배정. 구간 중 최
 
 ``` r
 Smr_Wth %>%
-  gather(key = "Dust", value = "value", pm10, pm25) %>%
+  gather(key = "Dust", value = "value", pm10_CTG, pm25_CTG) %>%
   mutate(Day = as.numeric(Day)) %>%
   ggplot() +
   geom_line(aes(x = Day, y = value, group = Dust, color = Dust)) +
   facet_wrap(~Month, nrow = 4, ncol = 3)
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-3-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-5-1.png)
 
 pm10 is almost Good-Modertate, Sometimes Unhealthy. pm25 is Unhealthy in
 Dec-Jan-Feb
@@ -144,7 +149,7 @@ Dust_Wrn %>%
   facet_wrap(~Month, nrow = 4)
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-6-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-8-1.png)
 
 12/15 -3/12 초미세먼지 경보 지속적으로 발령 12-3월까지는 미세먼지 영향권
 
@@ -193,7 +198,7 @@ SK_Age_Modified %>%
   facet_wrap(~MONTH, nrow = 4)
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-8-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-10-1.png)
 
 일요일/공휴일에는 유동인구 수 감소. 5/22일(석가탄신일), 6/13(지방선거),
 9/24-26(추석), 10/25, 1/10, 2/4-2/6(설날) 에는 급감 성별간 차이 없음.
@@ -213,7 +218,7 @@ SK_Age_Modified %>%
   scale_y_log10()
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-9-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-11-1.png)
 
 미세먼지 많은 달에 유동인구 수 감소.
 
@@ -238,7 +243,7 @@ SK_Time_Modified %>%
   facet_wrap(~Week_Day, nrow = 3, ncol = 3)
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-11-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
 ``` r
 SK_Time_Modified %>%
@@ -253,7 +258,7 @@ SK_Time_Modified %>%
   facet_wrap(~Week_Day, nrow = 3, ncol = 3)
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-12-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-14-1.png)
 
 미세먼지 영향권 달에는 확실히 유동인구 합이 줄어든다.
 
@@ -313,7 +318,7 @@ left_join(Smr_Card, MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
   scale_y_log10()
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-17-1.png)
 
 미세먼지 영향권 달에 (광학제품, 레저업소, 서적문구) 는 매출건이 많고,
 (유통업, 의복, 자동차 정비)는 건수가 줄어든다.
@@ -333,7 +338,7 @@ left_join(Smr_Card, MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
   scale_y_log10()
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-18-1.png)
 
 ``` r
 Card %>%
@@ -348,7 +353,7 @@ Card %>%
   geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-17-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
 (유통업) 12-3월까지 낮다.
 
@@ -365,7 +370,7 @@ Card %>%
   geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-18-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-20-1.png)
 
 서적 / 문구는 미세먼지 기간에 살짝 높다.
 
@@ -382,7 +387,7 @@ Card %>%
   geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-19-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-21-1.png)
 
 광학은 미세먼지 기간에 살짝 높다.
 
@@ -399,7 +404,7 @@ Card %>%
   geom_line(aes(x = STD_DD, y = SUM_CNT, group = MCT_NM, color = MCT_NM))
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-20-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-22-1.png)
 
 레저는 미세먼지 기간에 살짝 높고, 자동차 정비는 줄고, 의복도 약간 준다.
 
@@ -419,7 +424,7 @@ Card %>%
   scale_y_log10()
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-21-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-23-1.png)
 
 미세먼지 영향권에서 YOUTH들의 유통업, 자동차 정비건수가 줄어든다.
 레저업소, 광학, 서적문구(3월 제외), 의복, 는 보통… 차이 없음 레저업소는
@@ -449,7 +454,7 @@ Real_Dist %>%
   facet_wrap(~BOR_CD, nrow = 2, scales = "free")
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-23-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-25-1.png)
 
 간식 : 미세먼지 기간에 종로에서 Variation 감소
 
@@ -482,7 +487,7 @@ Real_Dist %>%
   facet_wrap(~BOR_CD, nrow = 2, scales = "free")
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-24-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-26-1.png)
 
 -   1.  식사 : 종로에서는 미세먼지 기간에 다소 감소(피크 1번) 노원에서는
         미세먼지 좋을 때, 매출 증가
@@ -523,7 +528,7 @@ Real_Dist %>%
   facet_wrap(~CTG_NM, nrow = 4, scales = "free")
 ```
 
-![](Data_Plot_files/figure-markdown_github/unnamed-chunk-25-1.png)
+![](Data_Plot_files/figure-markdown_github/unnamed-chunk-27-1.png)
 
 마실거리, 식사, 임신/육아가 뚜렷하게 미세먼지 기간에 감소
 
