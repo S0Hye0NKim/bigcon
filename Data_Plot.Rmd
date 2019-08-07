@@ -25,8 +25,6 @@ library(ggraph)
 library(tidygraph)
 library(readxl)
 load("Data_Cleansing.RData")
-Wth_obs <- readRDS("Wth_obs.rds")
-source("https://raw.githubusercontent.com/S0Hye0NKim/bigcon/master/bigcon_function.R")
 loc_Wth_Jongno <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
                      range = "B1:E32", sheet = 2) 
 loc_Wth_Nowon <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
@@ -41,41 +39,35 @@ useNIADic()
 
 K-Weather에서 제공한 날씨 데이터. 
 
-
-```{r eval = FALSE}
-Jongno_obs <- Wth_Jongno %>% lapply(FUN = function(x) x %>%
-                                        select(-flag, -co2, -vocs) %>% mutate_all(as.character)) %>%
-  bind_rows %>% na.omit()
-
-Nowon_obs <- Wth_Nowon %>% lapply(FUN = function(x) x %>% 
-                                      select(-flag, -co2, -vocs) %>% mutate_all(as.character))  %>%
-  bind_rows()
-
-Wth_obs <- bind_rows(Jongno_obs, Nowon_obs)
-```
-
-
-```{r}
-DT_Wth_obs <- data.table(Wth_obs)
-
-DT_Wth_CTG <- DT_Wth_obs[, .(Day, Hour, serial, temp, pm10_CTG = Classify_Dust_lev(pm10, tiny = 10), 
-               pm25_CTG = Classify_Dust_lev(pm25, tiny = 25)), ]
-
-Wth_obs_CTG <- DT_Wth_CTG[, .(pm10_CTG = Mode(pm10_CTG), pm25_CTG = Mode(pm25_CTG)), by = .(Day)] %>%
-  tbl_df
-```
-
-
 ```{r}
 Dust_lev <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
 
-Weather <- Wth_obs_CTG %>%
+Weather <- Wth_Jongno[[12]] %>%
+  mutate(pm10 = as.numeric(pm10), 
+         pm25 = as.numeric(pm25), 
+         pm10 = case_when((pm10 <= 30) ~ "Good", 
+                          (pm10>30 & pm10<=50) ~ "Moderate", 
+                          (pm10>50 & pm10<=75) ~ "Sens_Unhealthy", 
+                          (pm10>75 & pm10<=100) ~ "Unhealthy", 
+                          (pm10>100 & pm10<=150) ~ "Very Unhealthy", 
+                          (pm10>150) ~ "Worst"), 
+         pm25 = case_when((pm25 <= 15) ~ "Good", 
+                          (pm25>15 & pm25<=25) ~ "Moderate", 
+                          (pm25>25 & pm25<=37) ~ "Sens_Unhealthy", 
+                          (pm25>37 & pm25<=50) ~ "Unhealthy", 
+                          (pm25>50 & pm25<=75) ~ "Very Unhealthy", 
+                          (pm25>75) ~ "Worst")) %>%
   separate(col = Day, into = c("Year", "Month", "Day")) %>%
   group_by(Year, Month, Day)
 
 Smr_Wth <- Weather %>%
-  mutate(pm10_CTG = factor(pm10_CTG, levels = Dust_lev), 
-         pm25_CTG = factor(pm25_CTG, levels = Dust_lev)) %>%
+  summarise(pm10 = which.max(table(pm10)) %>% names(), 
+            pm25 = which.max(table(pm25)) %>% names(), 
+            avg_noise = mean(noise), 
+            avg_temp = mean(temp), 
+            avg_humi = mean(humi)) %>%
+  mutate(pm10 = factor(pm10, levels = Dust_lev), 
+         pm25 = factor(pm25, levels = Dust_lev)) %>%
   ungroup() %>%
   mutate(Month = month.abb[as.numeric(Month)] %>%
            factor(levels = c("Apr", "May", "Jun", "Jul", "Aug", "Sep", 
@@ -91,7 +83,7 @@ summarise the Data with mode(pm10, pm25), average(noise, temp, humi)
 
 ```{r}
 Smr_Wth %>%
-  gather(key = "Dust", value = "value", pm10_CTG, pm25_CTG) %>%
+  gather(key = "Dust", value = "value", pm10, pm25) %>%
   mutate(Day = as.numeric(Day)) %>%
   ggplot() +
   geom_line(aes(x = Day, y = value, group = Dust, color = Dust)) +
