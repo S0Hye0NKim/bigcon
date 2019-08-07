@@ -1,0 +1,214 @@
+---
+title: "Data Analysis"
+author: "Sohyeon Kim"
+date: '2019 8 6 '
+output: pdf_document
+header-includes:
+  - \usepackage{kotex}
+---
+
+
+```{r message=F, warning=F}
+library(tidyverse)
+library(sp)
+library(data.table)
+library(rebus)
+library(readxl)
+#load("Data_Cleansing.RData")
+source("https://raw.githubusercontent.com/S0Hye0NKim/bigcon/master/bigcon_function.R")
+Dust_Warning <- readRDS("Dust_Warning.rds")
+Wth_obs <- readRDS("Wth_obs.rds") 
+HDong_CD <- readRDS("HDong_CD.rds") %>%
+  mutate(HDONG_CD = as.character(HDONG_CD))
+Dust_Warning <- read_excel("pmWarning.xls", range = "A4:F27") %>% 
+  select(Type = "항목", Warning = "경보단계", Start = "발령시간", End = "해제시간") %>%
+  mutate(Warning = recode(Warning, "주의보" = "Warning", "경보" = "Dust_Watch"),
+         Start = str_remove_all(Start, pattern = SPC %R% DGT %R% DGT %R% END), 
+         End = str_remove_all(End, pattern = SPC %R% DGT %R% DGT %R% END)) 
+
+```
+
+
+에어코리아에서 제공한 서울권 미세먼지 주의보/경보 발령 내역
+
+```{r}
+Dust_Warning_list <- list()
+
+for(i in 1:nrow(Dust_Warning)) {
+  data <- Dust_Warning[i, ]
+  Date <- seq(as.Date(data$Start), as.Date(data$End), by = "day")
+  sub_list <- tibble(Date) %>%
+    mutate(Type = data$Type, Warning = data$Warning)
+  Dust_Warning_list[[i]] = sub_list
+}
+
+Dust_Warning <- bind_rows(Dust_Warning_list) %>%
+  group_by(Date, Type) %>%
+  summarise(Warning = Classify_Wrn_Day(Warning)) %>%
+  unite(col = "Warning", Type, Warning)
+```
+
+
+
+```{r}
+loc_Wth_Jongno <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
+                     range = "B1:E32", sheet = 2) 
+loc_Wth_Nowon <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
+                     range = "H1:K23", sheet = 2) 
+loc_Wth <- rbind(loc_Wth_Jongno, loc_Wth_Nowon) %>%
+  select(serial = "스테이션", location = "위치", HDONG_NM = "행정동") 
+
+Wth_obs_HDONG <- loc_Wth %>%
+  mutate(HDONG_NM = str_replace_all(HDONG_NM, pattern = ",", replace = "."), 
+         HDONG_NM = str_replace_all(HDONG_NM, "종로" %R% SPC %R% "1", replace = "종로" %R% "1")) %>%
+  left_join(HDong_CD, by = "HDONG_NM") %>%
+  right_join(y = Wth_obs, by = "serial") %>%
+  filter(pm10 != "-0999", pm25 != "-0999", 
+         serial != "V10O1611289", serial != "V10O1611887")
+```
+
+wth_obs_HDONG에서 V10O1611289(천연동), V10O1611887(명동) HDONG_CD 없음.Wth_obs에서 제외하자. 
+NA가 "-0999"로 표시되어 있기 떄문에 제외.
+
+
+
+```{r}
+Wth_Day_HDONG <- Wth_obs_HDONG %>%
+  group_by(Day, HDONG_CD) %>%
+  summarise(avg_temp = mean(as.numeric(temp), na.rm = T), pm10 = mean(as.numeric(pm10), na.rm = T), 
+            pm25 = mean(as.numeric(pm25), na.rm = T))
+
+```
+
+총 12775개 Row여야 하지만, 관측되지 않은 값이 있으므로 그 수보다 적은 8813개.
+
+```{r}
+Wth_Day <- Wth_obs_HDONG %>%
+  group_by(Day) %>%
+  summarise(avg_temp = mean(as.numeric(temp)), pm10 = mean(as.numeric(pm10)), pm25 = mean(as.numeric(pm25)))
+```
+
+
+```{r eval = FALSE}
+Dust_lev <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
+DT_Wth_obs <- data.table(Wth_obs_HDONG)
+
+Wth_obs_CTG <- Wth_obs_HDONG %>%
+  mutate(pm10_CTG = Classify_Dust_lev(pm10, tiny= 10), 
+         pm25_CTG = Classify_Dust_lev(pm25, tiny = 25)) %>%
+  group_by(Day, HDONG_CD) %>%
+  summarise(temp = mean(as.numeric(temp)), humi = mean(as.numeric(humi)), pm25 = mean(as.numeric(pm25)), 
+            pm10 = mean(as.numeric(pm10)), pm10_CTG = Mode(pm10_CTG), pm25_CTG = Mode(pm25_CTG)) %>%
+  mutate(pm10_CTG = factor(pm10_CTG, levels = Dust_lev), 
+         pm25_CTG = factor(pm25_CTG, levels = Dust_lev))
+```
+
+
+# SK
+
+```{r eval = FALSE}
+SK_Age_HDONG_Modified <- SK_Age %>%
+  lapply(FUN = function(x) x %>% 
+           gather(key = "Type", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
+           separate(Type, into = c("Sex", "Age"), sep = "_FLOW_POP_CNT_") %>%
+           mutate(Date = as.Date(STD_YMD), Avg_pop = as.numeric(Avg_pop))) %>%
+  bind_rows(.id = "MONTH") %>%
+  mutate(HDONG_CD = str_remove_all(HDONG_CD, pattern = DGT %R% DGT %R% END), 
+         Age = str_extract(Age, pattern = START %R% DGT %R% DGT), 
+         AGE_CTG = case_when(Age < 20 ~ "Youth", 
+                         Age %in% 20:39 ~ "Rising", 
+                         Age %in% 40:59 ~ "Middle", 
+                         Age >= 60 ~ "Senior"), 
+         AGE_CTG = factor(AGE_CTG, levels = c("Youth", "Rising", "Middle", "Senior")))
+```
+
+
+```{r eval = FALSE}
+SK_Summary <- SK_Age_Modified %>%
+  group_by(STD_YMD, HDONG_CD) %>%
+  summarise(Avg = mean(Avg_pop)) %>%
+  mutate(HDONG_CD = as.numeric(HDONG_CD))
+```
+
+
+```{r}
+SK_Age_Modified <- SK_Age %>% lapply(FUN = function(x) x %>%  
+                    gather(key = "Type", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
+                    separate(Type, into = c("Sex", "Age"), sep = "_FLOW_POP_CNT_") %>%
+                    mutate(Date = as.Date(STD_YMD), Avg_pop = as.numeric(Avg_pop)) %>%
+                    group_by(STD_YMD, Sex) %>%
+                    summarise(SUM = sum(Avg_pop))) %>%
+  bind_rows()
+```
+
+
+
+# 1-1. Poisson Regression with SK_Summary
+
+```{r eval = FALSE}
+SK_Age_Wth <- left_join(SK_Age_Modified, Wth_Day_HDONG, by = "HDONG_CD")
+```
+
+카운트 데이터라서 포아송 리그레션 하려고 했는데, 소수점 때문에 불가....
+주최측에 다시 질문 보냄.
+SUM 으로 정수값 만들고 포아송 리그레션 진행할 것.
+
+```{r}
+SK_Daily <- left_join(SK_Age_Modified, Wth_obs_CTG, by = c("STD_YMD" = "Day")) %>%
+  separate(STD_YMD, into = c("Year", "Month", "Day")) %>%
+  mutate(SUM = as.integer(SUM))
+```
+
+
+```{r}
+SK_fit_Pois <- glm(SUM ~ Sex + temp + pm10_CTG + pm25_CTG + factor(Month) 
+                   , data = SK_Daily, family = poisson(link = "log"))
+summary(SK_fit_Pois)
+```
+
+
+# GS
+
+```{r}
+Real_Dist <- Dist %>%
+  group_by(OPER_DT, ADMD_CD) %>%
+  mutate(Real_Value = value * AMT_IND) %>%
+  ungroup() %>%
+  mutate(OPER_DT = strptime(OPER_DT, format = "%Y%m%d") %>% as.character())
+```
+
+
+```{r}
+Dist_Daily <- left_join(Real_Dist, Wth_Day_HDONG, by = c("OPER_DT" = "Day", "ADMD_CD" = "HDONG_CD"))
+```
+
+?날씨 관측값이 없는 날짜를 어떻게 처리?
+
+```{r}
+fit_Dist <- lm(Real_Value ~  temp + pm10 + pm25 + factor(Category) + ADMD_CD, data = Dist_Daily %>% na.omit)
+summary(fit_Dist)
+```
+
+
+```{r}
+fit_Dist_Null <- lm(Real_Value ~  temp + pm10 + pm25 + factor(Category), data = Dist_Daily %>% na.omit)
+summary(fit_Dist_Null)
+```
+
+
+Dist에 Category 결합.
+
+```{r}
+Dist_Daily <- left_join(Real_Dist, Wth_obs_CTG, by = c("ADMD_CD" = "HDONG_CD", "OPER_DT" = "Day"))
+```
+
+```{r}
+Dist_fit3 <- lm(Real_Value ~ pm25_CTG + pm10_CTG + factor(Category) + factor(ADMD_CD) + temp + humi, 
+                data = Dist_Daily)
+summary(Dist_fit3)
+```
+
+
+
+
+
