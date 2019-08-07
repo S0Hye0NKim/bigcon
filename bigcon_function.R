@@ -32,6 +32,8 @@ Classify_Dust_lev <- function(pm, tiny) {
                     (pm>50 & pm<=75) ~ "Very Unhealthy", 
                     (pm>75) ~ "Worst")
   }
+  Dust_lev <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
+  pm <- factor(pm, levels = Dust_lev)
   return(pm)
 }
 
