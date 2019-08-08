@@ -103,40 +103,39 @@ pm10 is almost Good-Modertate, Sometimes Unhealthy.
 pm25 is Unhealthy in Dec-Jan-Feb
 
 
+
+
+
 ```{r}
-Classify_Wrn_Day <- function(x) {
-  if("Dust_Watch" %in% x) {
-    return("Dust_Watch")
-  } else if("Warning" %in% x) {
-    return("Warning")
-  } else {return("No_Wrn")}
+Dust_Warning <- read_excel("pmWarning.xls", range = "A4:F27") %>% 
+  select(Type = "항목", Warning = "경보단계", Start = "발령시간", End = "해제시간") %>%
+  mutate(Warning = recode(Warning, "주의보" = "Warning", "경보" = "Dust_Watch"),
+         Start = str_remove_all(Start, pattern = SPC %R% DGT %R% DGT %R% END), 
+         End = str_remove_all(End, pattern = SPC %R% DGT %R% DGT %R% END)) 
+
+Dust_Warning_list <- list()
+
+for(i in 1:nrow(Dust_Warning)) {
+  data <- Dust_Warning[i, ]
+  Date <- seq(as.Date(data$Start), as.Date(data$End), by = "day")
+  sub_list <- tibble(Date) %>%
+    mutate(Type = data$Type, Warning = data$Warning)
+  Dust_Warning_list[[i]] = sub_list
 }
-```
 
+Date_seq <- seq(as.Date("2018-04-01"), as.Date("2019-03-31"), by = "day")
+Warning_Day <- tibble(Date = Date_seq)
 
-```{r}
-Wth_Obs <- Wth_Jongno[[12]] 
-Wrn_lev <- c("No_Wrn", "Warning", "Dust_Watch")
-
-Dust_Wrn <- Wth_Obs %>%
-  separate(Hour, into = c("Hour", "Minute"), 2) %>%
-  mutate(pm10 = as.numeric(pm10), pm25 = as.numeric(pm25)) %>%
-  group_by(Day, Hour) %>%
-  summarise(pm10 = mean(pm10), pm25 = mean(pm25)) %>%
-  mutate(pm10 = case_when((pm10 < 150) ~ "No_Wrn", 
-                          (pm10 >= 150 & pm10 < 300) ~ "Warning", 
-                          (pm10 >= 300) ~ "Dust_Watch"), 
-         pm25 = case_when((pm25 < 75) ~ "No_Wrn", 
-                          (pm10 >= 75 & pm10 < 150) ~ "Warning", 
-                          (pm10 >= 150) ~ "Dust_Watch")) %>%
-  ungroup() %>%
-  mutate(pm10_Pre = lag(pm10), 
-         pm25_Pre = lag(pm25), 
-         pm10_Wrn = ifelse(pm10 == pm10_Pre, pm10, "Not"), 
-         pm25_Wrn = ifelse(pm25 == pm25_Pre, pm25, "Not")) %>%
-  group_by(Day) %>%
-  summarise(pm10 = Classify_Wrn_Day(pm10_Wrn), 
-            pm25 = Classify_Wrn_Day(pm25_Wrn))
+Dust_Warning <- bind_rows(Dust_Warning_list) %>%
+  group_by(Date, Type) %>%
+  summarise(Warning = Classify_Wrn_Day(Warning)) %>%
+  spread(key = Type, value = Warning) %>%
+  full_join(y = Warning_Day, by = "Date") %>%
+  select(Date, PM_10 = PM10, PM_25 = "PM2.5") %>%
+  ungroup %>%
+  mutate(Date = as.character(Date), 
+         PM_10 = replace_na(PM_10, replace = "No_Wrn"), 
+         PM_25 = replace_na(PM_25, replace = "No_Wrn"))
 ```
 
 
@@ -148,18 +147,20 @@ pm25의 시간 평균농도가 75이상이 두시간 지속이면 초미세먼�
 pm25의 시간 평균농도가 150이상이 두시간 지속이면 초미세먼지 경보 발령.
 (대전광역시 보건환경연구원 기준)
 
+에어코리아 제공 "서울권 미세먼지 경보/주의보.xlsx"
+
 
 ```{r}
-Dust_Wrn %>%
-  gather(key = "Warning", value = "value", -Day) %>%
-  mutate(value = factor(value, levels = Wrn_lev)) %>%
-  separate(Day, into = c("Year", "Month", "Day")) %>%
+Dust_Warning %>%
+  separate(Date, into = c("Year", "Month", "Day")) %>%
   mutate(Month = month.abb[as.numeric(Month)] %>%
            factor(levels = c("Apr", "May", "Jun", "Jul", "Aug", "Sep", 
                              "Oct", "Nov", "Dec", "Jan", "Feb", "Mar")), 
          Day = as.numeric(Day)) %>%
+  gather(key = "Type", value = "value", PM_10, PM_25) %>%
+  mutate(value = factor(value, levels = c("No_Wrn", "Warning", "Dust_Watch"))) %>%
   ggplot() +
-  geom_line(aes(x = Day, y = value, group = Warning, color = Warning)) +
+  geom_line(aes(x = Day, y = value, group = Type, color = Type)) +
   facet_wrap(~Month, nrow = 4)
 ```
 
