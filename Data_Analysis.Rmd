@@ -2,7 +2,7 @@
 title: "Data Analysis"
 author: "Sohyeon Kim"
 date: '2019 8 6 '
-output: pdf_document
+output: html_document
 header-includes:
   - \usepackage{kotex}
 ---
@@ -14,43 +14,46 @@ library(sp)
 library(data.table)
 library(rebus)
 library(readxl)
+library(ggplot2)
 #load("Data_Cleansing.RData")
 source("https://raw.githubusercontent.com/S0Hye0NKim/bigcon/master/bigcon_function.R")
-Dust_Warning <- readRDS("Dust_Warning.rds")
-Wth_obs <- readRDS("Wth_obs.rds") 
 HDong_CD <- readRDS("HDong_CD.rds") %>%
   mutate(HDONG_CD = as.character(HDONG_CD))
-Dust_Warning <- read_excel("pmWarning.xls", range = "A4:F27") %>% 
-  select(Type = "항목", Warning = "경보단계", Start = "발령시간", End = "해제시간") %>%
-  mutate(Warning = recode(Warning, "주의보" = "Warning", "경보" = "Dust_Watch"),
-         Start = str_remove_all(Start, pattern = SPC %R% DGT %R% DGT %R% END), 
-         End = str_remove_all(End, pattern = SPC %R% DGT %R% DGT %R% END)) 
+Dust_Warning <- readRDS("Dust_Warning.rds") %>%
+  dplyr::select(Date, pm10_Wrn = PM_10, pm25_Wrn = PM_25)
+Wth_Day_HDONG <- readRDS("Wth_Day_HDONG.rds") 
 
+Card <- readRDS("Card.rds")
+Dist <- readRDS("Dist.rds")
+SK_Age <- readRDS("SK_Age.rds")
+SK_Time <- readRDS("SK_Time.rds")
+
+Holiday <- read_excel("Holiday_List.xlsx") %>%
+  mutate(Date = as.character(Date))
+```
+
+
+
+
+```{r}
+Dust_level  <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
+Wrn_level <- c("No_Wrn", "Warning", "Dust_Watch")
+
+Wth_Day_HDONG <- Wth_Day_HDONG %>%
+  mutate(pm10_CTG = factor(pm10_CTG, levels = Dust_level), 
+         pm25_CTG = factor(pm25_CTG, levels = Dust_level), 
+         pm10_Wrn = factor(pm10_Wrn, levels = Wrn_level), 
+         pm25_Wrn = factor(pm25_Wrn, levels = Wrn_level))
 ```
 
 
 에어코리아에서 제공한 서울권 미세먼지 주의보/경보 발령 내역
 
-```{r}
-Dust_Warning_list <- list()
-
-for(i in 1:nrow(Dust_Warning)) {
-  data <- Dust_Warning[i, ]
-  Date <- seq(as.Date(data$Start), as.Date(data$End), by = "day")
-  sub_list <- tibble(Date) %>%
-    mutate(Type = data$Type, Warning = data$Warning)
-  Dust_Warning_list[[i]] = sub_list
-}
-
-Dust_Warning <- bind_rows(Dust_Warning_list) %>%
-  group_by(Date, Type) %>%
-  summarise(Warning = Classify_Wrn_Day(Warning)) %>%
-  unite(col = "Warning", Type, Warning)
-```
 
 
 
-```{r}
+
+```{r Code for Wth_Day_HDONG, eval = FALSE,}
 loc_Wth_Jongno <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
                      range = "B1:E32", sheet = 2) 
 loc_Wth_Nowon <- read_xlsx("04_Innovation 분야_환경기상데이터(케이웨더)_데이터정의서(행정동추가).xlsx", 
@@ -65,148 +68,413 @@ Wth_obs_HDONG <- loc_Wth %>%
   right_join(y = Wth_obs, by = "serial") %>%
   filter(pm10 != "-0999", pm25 != "-0999", 
          serial != "V10O1611289", serial != "V10O1611887")
+
+Wth_Day_HDONG <- Wth_obs_HDONG %>%
+  group_by(Day, HDONG_CD) %>%
+  summarise(avg_temp = mean(as.numeric(temp), na.rm = T), avg_pm10 = mean(as.numeric(pm10), na.rm = T), 
+            avg_pm25 = mean(as.numeric(pm25), na.rm = T)) %>%
+  mutate(pm10_CTG = Classify_Dust_lev(avg_pm10, tiny = 10), 
+         pm25_CTG = Classify_Dust_lev(avg_pm25, tiny = 25)) %>%
+  left_join(Dust_Warning, by = c("Day" = "Date")) 
 ```
 
 wth_obs_HDONG에서 V10O1611289(천연동), V10O1611887(명동) HDONG_CD 없음.Wth_obs에서 제외하자. 
 NA가 "-0999"로 표시되어 있기 떄문에 제외.
-
-
-
-```{r}
-Wth_Day_HDONG <- Wth_obs_HDONG %>%
-  group_by(Day, HDONG_CD) %>%
-  summarise(avg_temp = mean(as.numeric(temp), na.rm = T), pm10 = mean(as.numeric(pm10), na.rm = T), 
-            pm25 = mean(as.numeric(pm25), na.rm = T))
-
-```
-
 총 12775개 Row여야 하지만, 관측되지 않은 값이 있으므로 그 수보다 적은 8813개.
-
-```{r}
-Wth_Day <- Wth_obs_HDONG %>%
-  group_by(Day) %>%
-  summarise(avg_temp = mean(as.numeric(temp)), pm10 = mean(as.numeric(pm10)), pm25 = mean(as.numeric(pm25)))
-```
-
-
-```{r eval = FALSE}
-Dust_lev <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
-DT_Wth_obs <- data.table(Wth_obs_HDONG)
-
-Wth_obs_CTG <- Wth_obs_HDONG %>%
-  mutate(pm10_CTG = Classify_Dust_lev(pm10, tiny= 10), 
-         pm25_CTG = Classify_Dust_lev(pm25, tiny = 25)) %>%
-  group_by(Day, HDONG_CD) %>%
-  summarise(temp = mean(as.numeric(temp)), humi = mean(as.numeric(humi)), pm25 = mean(as.numeric(pm25)), 
-            pm10 = mean(as.numeric(pm10)), pm10_CTG = Mode(pm10_CTG), pm25_CTG = Mode(pm25_CTG)) %>%
-  mutate(pm10_CTG = factor(pm10_CTG, levels = Dust_lev), 
-         pm25_CTG = factor(pm25_CTG, levels = Dust_lev))
-```
-
 
 # SK
 
-```{r eval = FALSE}
+# 1-1. SK_Age (Gamma Hurdle Model)
+
+```{r}
+Age_lev <- c("00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "60", "65", "70")
+
 SK_Age_HDONG_Modified <- SK_Age %>%
   lapply(FUN = function(x) x %>% 
            gather(key = "Type", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
-           separate(Type, into = c("Sex", "Age"), sep = "_FLOW_POP_CNT_") %>%
-           mutate(Date = as.Date(STD_YMD), Avg_pop = as.numeric(Avg_pop))) %>%
-  bind_rows(.id = "MONTH") %>%
+           separate(Type, into = c("Sex", "Age"), sep = "_FLOW_POP_CNT_")) %>%
+           bind_rows(.id = "MONTH") %>%
   mutate(HDONG_CD = str_remove_all(HDONG_CD, pattern = DGT %R% DGT %R% END), 
-         Age = str_extract(Age, pattern = START %R% DGT %R% DGT), 
+         Age = str_extract(Age, pattern = START %R% DGT %R% DGT),
          AGE_CTG = case_when(Age < 20 ~ "Youth", 
                          Age %in% 20:39 ~ "Rising", 
                          Age %in% 40:59 ~ "Middle", 
                          Age >= 60 ~ "Senior"), 
-         AGE_CTG = factor(AGE_CTG, levels = c("Youth", "Rising", "Middle", "Senior")))
-```
-
-
-```{r eval = FALSE}
-SK_Summary <- SK_Age_Modified %>%
-  group_by(STD_YMD, HDONG_CD) %>%
-  summarise(Avg = mean(Avg_pop)) %>%
-  mutate(HDONG_CD = as.numeric(HDONG_CD))
+         AGE_CTG = factor(AGE_CTG, levels = c("Youth", "Rising", "Middle", "Senior")),
+         Avg_pop = as.numeric(Avg_pop),
+         Non_zero = ifelse(Avg_pop == 0, 0, 1), 
+         Age = as.numeric(Age)) %>%
+  left_join(Wth_Day_HDONG, by = c("STD_YMD" = "Day", "HDONG_CD"))
 ```
 
 
 ```{r}
-SK_Age_Modified <- SK_Age %>% lapply(FUN = function(x) x %>%  
-                    gather(key = "Type", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
-                    separate(Type, into = c("Sex", "Age"), sep = "_FLOW_POP_CNT_") %>%
-                    mutate(Date = as.Date(STD_YMD), Avg_pop = as.numeric(Avg_pop)) %>%
-                    group_by(STD_YMD, Sex) %>%
-                    summarise(SUM = sum(Avg_pop))) %>%
-  bind_rows()
+glm_SK_Age_Binom <- glm(Non_zero ~ ., data = SK_Age_HDONG_Modified %>% select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Avg_pop), family = binomial(link = "logit"))
+
+step <- MASS::stepAIC(glm_SK_Age_Binom)
+
+glm_SK_Age_Gamma <- glm(Avg_pop ~., data = SK_Age_HDONG_Modified %>% filter(Non_zero == 1) %>%
+                          select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), family = Gamma(link = "log"))
 ```
 
+AIC가 Gamma(link = "log")모델에서 낮으므로 log link 선택.
 
 
-# 1-1. Poisson Regression with SK_Summary
-
-```{r eval = FALSE}
-SK_Age_Wth <- left_join(SK_Age_Modified, Wth_Day_HDONG, by = "HDONG_CD")
-```
-
-카운트 데이터라서 포아송 리그레션 하려고 했는데, 소수점 때문에 불가....
-주최측에 다시 질문 보냄.
-SUM 으로 정수값 만들고 포아송 리그레션 진행할 것.
+# 1-2. SK_Time (GLS?)
 
 ```{r}
-SK_Daily <- left_join(SK_Age_Modified, Wth_obs_CTG, by = c("STD_YMD" = "Day")) %>%
-  separate(STD_YMD, into = c("Year", "Month", "Day")) %>%
-  mutate(SUM = as.integer(SUM))
+SK_Time_HDONG_Modified <- SK_Time %>% 
+  lapply(FUN = function(x) x %>%
+           gather(key = "Time", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
+           mutate(Time = parse_number(Time), Avg_pop = as.numeric(Avg_pop))) %>%
+  bind_rows() %>%
+  mutate(Week_Day = strftime(STD_YMD, "%a"), 
+         HDONG_CD = str_remove_all(HDONG_CD, pattern = DGT %R% DGT %R% END)) %>%
+  left_join(Wth_Day_HDONG, by = c("STD_YMD" = "Day", "HDONG_CD")) %>%
+  mutate(Holiday = ifelse(Week_Day %in% c("토", "일"), 1, 0))
+
+Holiday_idx <- SK_Time_HDONG_Modified$STD_YMD %in% Holiday$Date %>% which
+SK_Time_HDONG_Modified[Holiday_idx, "Holiday"] <- 1
 ```
 
+시계열 자료....
 
-```{r}
-SK_fit_Pois <- glm(SUM ~ Sex + temp + pm10_CTG + pm25_CTG + factor(Month) 
-                   , data = SK_Daily, family = poisson(link = "log"))
-summary(SK_fit_Pois)
-```
+GLS / ARMA
 
 
 # GS
 
+
+# 2-1. HDONG_Index (Gamma glm)
+
 ```{r}
-Real_Dist <- Dist %>%
-  group_by(OPER_DT, ADMD_CD) %>%
-  mutate(Real_Value = value * AMT_IND) %>%
-  ungroup() %>%
-  mutate(OPER_DT = strptime(OPER_DT, format = "%Y%m%d") %>% as.character())
+Dist_Modified <- Dist %>%
+  ungroup %>%
+  dplyr::select(OPER_DT, ADMD_CD, AMT_IND) %>%
+  unique %>%
+   mutate(OPER_DT = strptime(OPER_DT, format = "%Y%m%d") %>% as.character()) %>%
+  left_join(Wth_Day_HDONG, by = c("OPER_DT" = "Day", "ADMD_CD" = "HDONG_CD")) %>%
+  separate(OPER_DT, into = c("Year", "Month", "Day")) %>%
+  mutate(Month = month.abb[as.numeric(Month)], 
+         Month = factor(Month, levels = c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", 
+                                          "Dec", "Jan", "Feb", "Mar"))) %>%
+  left_join(HDong_CD, by = c("ADMD_CD" = "HDONG_CD")) 
 ```
 
 
 ```{r}
-Dist_Daily <- left_join(Real_Dist, Wth_Day_HDONG, by = c("OPER_DT" = "Day", "ADMD_CD" = "HDONG_CD"))
+Dist %>%
+  filter(ADMD_CD %>% str_detect(pattern = START %R% "1111")) %>%
+  left_join(HDong_CD, by = c("ADMD_CD" = "HDONG_CD")) %>%
+  ggplot() +
+  geom_boxplot(aes(x = HDONG_NM, y = AMT_IND, fill = HDONG_NM), alpha = 0.2, outlier.shape = NULL) +
+  theme(axis.text.x = element_blank())
+```
+
+```{r}
+Dist %>%
+  filter(ADMD_CD %>% str_detect(pattern = START %R% "1135")) %>%
+  left_join(HDong_CD, by = c("ADMD_CD" = "HDONG_CD")) %>%
+  ggplot() +
+  geom_boxplot(aes(x = HDONG_NM, y = AMT_IND, fill = HDONG_NM), alpha = 0.2)
+```
+
+
+```{r}
+lm_Dist <- lm(AMT_IND ~ Month + avg_temp + avg_pm10 + avg_pm25 + 
+                     HDONG_NM + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn, 
+              data = Dist_Modified %>% na.omit())
+
+step <- MASS::stepAIC(lm_Dist, direction = "both")
+```
+
+
+
+```{r}
+lm_Dist_Best <- lm(AMT_IND ~ Month + factor(HDONG_NM) + pm10_CTG + pm10_Wrn + pm25_Wrn, 
+                   data = Dist_Modified %>% na.omit())
+
+summary(lm_Dist_Best)
+```
+
+
+QQplot이 thick tail을 가지고 있다. 
+AMT_IND는 0 이상인 값이므로 Gamma distribution을 사용해보자.
+
+```{r}
+true_y <- data.frame(value = Dist_Modified %>% na.omit() %>% .$AMT_IND, var = "Obs")
+fitted <- data.frame(value = glm_Dist_Best$fitted.values, var = "Fitted")
+
+Binded <- rbind(true_y, fitted)
+
+ggplot(Binded) +
+  geom_density(aes(x = value, fill = var), alpha = 0.2)
+```
+
+  Amt_IND는 왼쪽으로 치우쳐져 있으며, Gamma Distribution의 형태를 띈다. 
+
+따라서, Gamma로 glm을 사용해보자.
+
+```{r}
+glm_Dist_All <- glm( AMT_IND ~ Month + avg_temp + avg_pm10 + avg_pm25 +
+                     factor(HDONG_NM) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn , 
+              data = Dist_Modified %>% na.omit(), family = Gamma(link = "log"))
+
+step <- MASS::stepAIC(glm_Dist_All)
+```
+
+
+```{r}
+glm_Dist_Best <- glm(AMT_IND ~ Month + avg_temp + factor(ADMD_CD) + pm10_CTG + pm10_Wrn +
+                       pm25_Wrn, data = Dist_Modified %>% na.omit(), family = Gamma(link = "log"))
+
+summary(glm_Dist_Best)
+```
+
+
+AIC: -7641.7 (Inverse link)
+AIC: -7793.8 (log link)
+
+
+```{r}
+plot(glm_Dist_Best, 2)
+```
+
+
+
+pm10_CTG, pm25_Wrn 별로 카테고리 order를 고려해보자.
+
+```{r}
+Dist_Modified_Ordered <- Dist_Modified %>%
+  mutate(pm10_CTG = recode(pm10_CTG, "Good" = 0, "Moderate" = 1, "Sens_Unhealthy" = 2, "Unhealthy" = 3, 
+                           "Very Unhealthy" = 4, "Worst" = 5), 
+         pm25_CTG = recode(pm25_CTG, "Good" = 0, "Moderate" = 1, "Sens_Unhealthy" = 2, "Unhealthy" = 3, 
+                           "Very Unhealthy" = 4, "Worst" = 5), 
+         pm10_Wrn = recode(pm10_Wrn, "No_Wrn" = 0, "Warning" = 1, "Dust_Watch" = 2), 
+         pm25_Wrn = recode(pm25_Wrn, "No_Wrn" = 0, "Warning" = 1, "Dust_Watch" = 2), 
+)
+```
+
+```{r}
+glm_Dist_All_Ord <- glm( AMT_IND ~ Month + avg_temp + avg_pm10 + avg_pm25 +
+                     factor(HDONG_NM) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn , 
+              data = Dist_Modified_Ordered %>% na.omit(), family = Gamma(link = "log"))
+
+step <- MASS::stepAIC(glm_Dist_All)
+```
+
+
+```{r}
+glm_Dist_Best_Ord <- glm(AMT_IND ~ Month + avg_temp + factor(HDONG_NM) + pm10_CTG + pm10_Wrn + 
+    pm25_Wrn, data = Dist_Modified_Ordered %>% na.omit(), family = Gamma(link = "log"))
+
+summary(glm_Dist_Best_Ord)
+```
+
+
+-> AIC 는 no-order가 우수, BIC는 order가 우수.
+
+
+
+***
+
+# 2-2. Real_Dist <- Category (Standardized lm?)
+
+```{r}
+Real_Dist <- Dist %>%
+  ungroup() %>%
+  mutate(Real_Value = value * AMT_IND, 
+         OPER_DT = strptime(OPER_DT, format = "%Y%m%d") %>% as.character()) %>%
+  left_join(Wth_Day_HDONG, by = c("OPER_DT" = "Day", "ADMD_CD" = "HDONG_CD"))
+```
+
+
+```{r}
+Dist_Daily <- left_join(Real_Dist, Wth_Day_HDONG, by = c("OPER_DT" = "Day", "ADMD_CD" = "HDONG_CD")) %>%
+  select(-BOR_CD) %>%
+  separate(OPER_DT, into = c("Year", "Month", "Day")) %>%
+  mutate(Month = month.abb[as.numeric(Month)])
 ```
 
 ?날씨 관측값이 없는 날짜를 어떻게 처리?
-
-```{r}
-fit_Dist <- lm(Real_Value ~  temp + pm10 + pm25 + factor(Category) + ADMD_CD, data = Dist_Daily %>% na.omit)
-summary(fit_Dist)
-```
+?비중에 -값?
 
 
 ```{r}
-fit_Dist_Null <- lm(Real_Value ~  temp + pm10 + pm25 + factor(Category), data = Dist_Daily %>% na.omit)
-summary(fit_Dist_Null)
+lm_Dist_Real_Value <- lm()
 ```
 
 
-Dist에 Category 결합.
+Dist에 Category 결합. 표준화해서...?
+
+# SH Card (Negative Binomial Regression)
+
+```{r warning = FALSE, message=FALSE}
+setwd(paste0(getwd(), "/카드매출데이터"))
+Card_File_Nm <- dir()[str_starts(dir(), pattern = "2019빅콘테스트")]
+MCT_CAT_CD <- read_xlsx(Card_File_Nm, sheet = 3, range = "B4:B165", col_names = FALSE) %>%
+  `colnames<-`(value = "Column") %>%
+  filter(!is.na(Column)) %>%
+  separate(Column, into = c("MCT_NM", "MCT_CD"))
+```
+
+
+카테고리별로 성격 너무 다름. 아웃라이어를 제거하자...
 
 ```{r}
-Dist_Daily <- left_join(Real_Dist, Wth_obs_CTG, by = c("ADMD_CD" = "HDONG_CD", "OPER_DT" = "Day"))
+split(Card, Card$MCT_CAT_CD) %>%
+  lapply(FUN = function(x) x %>% select(USE_CNT) %>% summary) %>%
+  bind_rows %>% t() %>% data.frame(stringsAsFactors = F) %>% 
+  `names<-`(value = c("Min", "First_Q", "Median", "Mean", "Third_Q", "Max")) %>%
+  mutate_all(str_extract, pattern = one_or_more(DGT) %R% DOT %R% one_or_more(DGT)) %>%
+  mutate_all(as.numeric) %>%
+  mutate(CTG = MCT_CAT_CD$MCT_NM) %>%
+  gather(key = "Type", value = "value", -CTG) %>%
+  filter(Type != "Max",Type != "Min") %>%
+  ggplot() +
+  geom_line(aes(x = CTG, y = value, group = CTG, color = CTG)) +
+  coord_cartesian(ylim = c(0, 100)) +
+  theme(axis.text = element_text(angle = 90))
+```
+
+
+
+
+```{r}
+Rising <- c(25, 30, 35)
+Middle <- c(40, 45, 50, 55)
+Senior <- c(60, 65)
+
+Card <- Card %>%
+  mutate(AGE = case_when(AGE_CD == 20 ~ "Youth", 
+                         AGE_CD %in% Rising ~ "Rising", 
+                         AGE_CD %in% Middle ~ "Middle", 
+                         AGE_CD %in% Senior ~ "Senior"), 
+         AGE = factor(AGE, levels = c("Youth", "Rising", "Middle", "Senior"))) 
+
+Card_Modified <- Card %>%
+  separate(HDONG_CD, into = c("GU_CD", "DONG_CD"), sep = 2) %>%
+  mutate(GU_CD = paste0("11", GU_CD), 
+         DONG_CD = str_remove(DONG_CD, pattern = START %R% DGT)) %>%
+  unite(HDONG_CD, GU_CD, DONG_CD, sep = "") %>%
+  mutate(STD_DD = strptime(STD_DD, format = "%Y%m%d") %>% as.character())
+
 ```
 
 ```{r}
-Dist_fit3 <- lm(Real_Value ~ pm25_CTG + pm10_CTG + factor(Category) + factor(ADMD_CD) + temp + humi, 
-                data = Dist_Daily)
-summary(Dist_fit3)
+Card_Daily <- left_join(Card_Modified, Wth_Day_HDONG, by = c("HDONG_CD", "STD_DD" = "Day")) %>%
+  mutate(MCT_CAT_CD = factor(MCT_CAT_CD), 
+         HDONG_CD = factor(HDONG_CD))
 ```
+
+```{r}
+Card_outliers <- split(Card, Card$MCT_CAT_CD) %>%
+  lapply(FUN = function(x) boxplot(x$USE_CNT, plot = FALSE)$out)
+
+```
+
+
+
+
+```{r}
+Card_Daily_Ord <- Card_Daily %>%
+  mutate(pm10_CTG = recode(pm10_CTG, "Good" = 0, "Moderate" = 1, "Sens_Unhealthy" = 2, "Unhealthy" = 3, 
+                           "Very Unhealthy" = 4, "Worst" = 5), 
+         pm25_CTG = recode(pm25_CTG, "Good" = 0, "Moderate" = 1, "Sens_Unhealthy" = 2, "Unhealthy" = 3, 
+                           "Very Unhealthy" = 4, "Worst" = 5), 
+         pm10_Wrn = recode(pm10_Wrn, "No_Wrn" = 0, "Warning" = 1, "Dust_Watch" = 2), 
+         pm25_Wrn = recode(pm25_Wrn, "No_Wrn" = 0, "Warning" = 1, "Dust_Watch" = 2),
+         AGE = recode(AGE, "Youth" = 0, "Rising" = 1, "Middle" = 2, "Senior" = 3) 
+)
+```
+
+
+```{r warning = F, message = F}
+Card_Sum_CTG_HDONG <- Card_Daily %>%
+  left_join(MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
+  group_by(HDONG_CD, MCT_NM) %>%
+  summarise(SUM_CNT = sum(USE_CNT)) %>%
+  spread(key = MCT_NM, value = SUM_CNT, fill = 0) %>%
+  ungroup()
+
+
+Mtx_Card <- Card_Sum_CTG_HDONG %>%
+  select(-HDONG_CD) %>%
+  as.matrix() %>%
+  `row.names<-`(value = Card_Sum_CTG_HDONG$HDONG_CD)
+```
+
+
+
+
+```{r}
+glm_Card_All <- glm(USE_CNT ~ ., family = "poisson", data = Card_Daily %>% select(-STD_DD, -AGE_CD, -USE_AMT))
+
+glm_Card_All_Ord <- glm(USE_CNT ~ ., family = "poisson", data = Card_Daily_Ord %>% select(-STD_DD, -AGE_CD, -USE_AMT))
+
+```
+
+
+그냥 일반 glm_card_all이 AIC와 BIC 모두 우수.
+
+```{r}
+AER::dispersiontest(glm_Card_All)
+```
+
+
+AER의 dispersiontest 결과, true dispersion is greater than 1
+Negative Binomial glm을 사용하자.
+
+```{r}
+glm_NB_Card <- MASS::glm.nb(USE_CNT ~ ., data = Card_Daily %>% select(-STD_DD, -AGE_CD, -USE_AMT))
+
+```
+
+NB가 AIC, BIC 더 낮다.
+AIC : 14473082
+BIC : 14473911
+
+
+
+
+
+```{r}
+First <- c("유통업", "요식업소")
+Second <- c("서적문구", "의료기관")
+Third <- c("레저업소", "연료판매", "음료식품")
+Fourth <- c("문화취미", "광학제품", "의복", "신변잡화", "사무통신", "자동차정비",
+                             "보건위생", "수리서비스", "숙박", "레저용품", "가전", "직물", "주방용구",
+                             "전기", "가구", "자동차판매")
+
+Card_Daily_MCT_Grouped <- Card_Daily %>%
+  mutate(CTG_Type = case_when(MCT_NM %in% First ~ "First", 
+                              MCT_NM %in% Second ~ "Second", 
+                              MCT_NM %in% Third ~ "Third", 
+                              MCT_NM %in% Fourth ~ "Fourth"))
+```
+
+
+
+```{r}
+glm_Card_Grouped <- glm(USE_CNT ~ ., data = Card_Daily_MCT_Grouped %>% select(-STD_DD, -MCT_CAT_CD, -AGE_CD,
+                                                                              -USE_AMT, -MCT_NM), 
+                        family = poisson)
+```
+
+
+
+묶어서 하는 거 소용 없다...
+
+
+
+
+
+
+
+
+
+
+
 
 
 
