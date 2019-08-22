@@ -2,7 +2,7 @@
 title: "Data Analysis"
 author: "Sohyeon Kim"
 date: '2019 8 6 '
-output: html_document
+output: pdf_document
 header-includes:
   - \usepackage{kotex}
 ---
@@ -50,7 +50,21 @@ Wth_Day_HDONG <- Wth_Day_HDONG %>%
 ```
 
 
+
 에어코리아에서 제공한 서울권 미세먼지 주의보/경보 발령 내역
+
+
+```{r}
+Wth_Day_HDONG <- Wth_Day_HDONG %>%
+  mutate(Week_Day = strftime(Day, format = "%a") %>% as.character, 
+         Holiday = ifelse(Week_Day %in% c("Sun", "Sat"), 1, 0))
+
+Holiday_idx <- Wth_Day_HDONG$Day %in% Holiday$Date %>% which
+Wth_Day_HDONG[Holiday_idx, "Holiday"] <- 1
+
+Wth_Day_HDONG <- mutate(Wth_Day_HDONG, Holiday = factor(Holiday, levels = c(0, 1)))
+```
+
 
 ```{r eval = FALSE}
 Wth_obs <- readRDS("Wth_obs.rds") %>%
@@ -95,6 +109,10 @@ wth_obs_HDONG에서 V10O1611289(천연동), V10O1611887(명동) HDONG_CD 없음.
 NA가 "-0999"로 표시되어 있기 떄문에 제외.
 총 12775개 Row여야 하지만, 관측되지 않은 값이 있으므로 그 수보다 적은 8813개.
 
+
+
+
+
 # SK
 
 ## 1-1. SK_Age (Gamma Hurdle Model)
@@ -122,8 +140,9 @@ SK_Age_HDONG_Modified <- SK_Age %>%
 
 
 
+
 ```{r warning=FALSE, message = FALSE, eval = FALSE}
-glm_SK_Age_Binom <- glm(Non_zero ~ ., data = SK_Age_HDONG_Modified %>% select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Avg_pop), family = binomial(link = "logit"))
+glm_SK_Age_Binom <- glm(Non_zero ~ ., data = SK_Age_HDONG_Modified %>% select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Avg_pop, -Holiday), family = binomial(link = "logit"))
 
 glm_SK_Age_Gamma <- glm(Avg_pop ~., data = SK_Age_HDONG_Modified %>% filter(Non_zero == 1) %>%
                           select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), family = Gamma(link = "log"))
@@ -132,10 +151,7 @@ glm_SK_Age_Gamma <- glm(Avg_pop ~., data = SK_Age_HDONG_Modified %>% filter(Non_
 AIC가 Gamma(link = "log")모델에서 낮으므로 log link 선택.
 
 
-
-
-
-```{r warning=F}
+```{r warning=F, message = FALSE}
 glm_SK_Age_Binom_ <- glm(Non_zero ~ HDONG_CD + Sex + Age + AGE_CTG + avg_temp + avg_pm10 + avg_pm25 + pm10_CTG + pm25_CTG +pm10_Wrn + pm25_Wrn + AGE_CTG:Sex, data = SK_Age_HDONG_Modified, 
                         family = binomial(link = "logit"))
 
@@ -144,6 +160,19 @@ glm_SK_Age_Gamma_ <- glm(Avg_pop ~. + Sex:AGE_CTG,
                           select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), 
                          family = Gamma(link = "log"))
 ```
+
+
+```{r}
+glm_SK_Age_Gamma_Hol <- glm(Avg_pop ~ HDONG_CD + Sex + Age + AGE_CTG + avg_temp + avg_pm10 + avg_pm25 + pm10_CTG + pm25_CTG + pm25_Wrn + Week_Day + Holiday + Sex:AGE_CTG + Holiday:Sex + Holiday:AGE_CTG + Holiday:pm10_CTG, 
+                         data = SK_Age_HDONG_Modified %>% filter(Non_zero == 1) %>%
+                          select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), 
+                         family = Gamma(link = "log"))
+```
+
+Holiday 들어간 모형이 더 좋다.
+
+
+
 
 
 ```{r eval = FALSE}
@@ -156,13 +185,21 @@ c(AIC(glm_SK_Age_Binom_), BIC(glm_SK_Age_Binom_), AIC(glm_SK_Age_Gamma_), BIC(gl
 
 Binomial은 interaction없는 모델이 좋고, Gamma 는 Interaction 있는 모델이 좋다. (AIC Best)
 
+
 ```{r}
-summary(glm_SK_Age_Binom_)
+glm_SK_Age_Binom_Best <- glm(Non_zero ~ HDONG_CD + Sex + Age + avg_temp + avg_pm10 + avg_pm25 + 
+    pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn, data = SK_Age_HDONG_Modified, 
+                        family = binomial(link = "logit"))
 ```
 
 
 ```{r}
-summary(glm_SK_Age_Gamma_)
+summary(glm_SK_Age_Binom_Best)
+```
+
+
+```{r}
+summary(glm_SK_Age_Gamma_Hol)
 ```
 
 
@@ -178,9 +215,23 @@ cv_glm_SK_Age_Gamma <- cvFit(glm_SK_Age_Gamma, data = SK_Age_HDONG_Modified %>% 
 
 ```{r eval = FALSE}
 cv_glm_SK_Age_Gamma_ <- cvFit(glm_SK_Age_Gamma_, data = SK_Age_HDONG_Modified %>% filter(Non_zero == 1) %>%
+                          select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero, -Holiday) %>% na.omit, 
+                          y = SK_Age_HDONG_Modified %>% na.omit() %>% filter(Non_zero == 1) %>% .$Avg_pop, 
+                          cost = mspe, K = 5, R = 1)
+```
+
+```{r}
+cv_glm_SK_Age_Gamma_Hol <- cvFit(glm_SK_Age_Gamma_Hol, data = SK_Age_HDONG_Modified %>% filter(Non_zero == 1) %>%
                           select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero) %>% na.omit, 
                           y = SK_Age_HDONG_Modified %>% na.omit() %>% filter(Non_zero == 1) %>% .$Avg_pop, 
                           cost = mspe, K = 5, R = 1)
+```
+
+
+```{r}
+cv_glm_SK_Age_Binom <- cvFit(glm_SK_Age_Binom, data = SK_Age_HDONG_Modified %>% na.omit,
+                              y = SK_Age_HDONG_Modified %>% na.omit %>% .$Non_zero, 
+                              cost = mspe, K = 5, R = 1)
 ```
 
 
@@ -188,7 +239,7 @@ cv_glm_SK_Age_Gamma_ <- cvFit(glm_SK_Age_Gamma_, data = SK_Age_HDONG_Modified %>
 c(cv_glm_SK_Age_Gamma$cv, cv_glm_SK_Age_Gamma_$cv)
 ```
 
-Interaction 있는 모델 선택.
+Interaction 있는 모델 선택. + Holiday
 
 ## 1-2. SK_Time (GLS?)
 
@@ -198,14 +249,10 @@ SK_Time_HDONG_Modified <- SK_Time %>%
            gather(key = "Time", value = "Avg_pop", -STD_YM, -STD_YMD, -HDONG_CD, -HDONG_NM) %>%
            mutate(Time = parse_number(Time), Avg_pop = as.numeric(Avg_pop))) %>%
   bind_rows() %>%
-  mutate(Week_Day = strftime(STD_YMD, "%a"), 
-         HDONG_CD = str_remove_all(HDONG_CD, pattern = DGT %R% DGT %R% END)) %>%
+  mutate(HDONG_CD = str_remove_all(HDONG_CD, pattern = DGT %R% DGT %R% END)) %>%
   left_join(Wth_Day_HDONG, by = c("STD_YMD" = "Day", "HDONG_CD")) %>%
-  mutate(Holiday = ifelse(Week_Day %in% c("Sun", "Sat"), 1, 0), 
-         Non_zero = ifelse(Avg_pop == 0, 0, 1))
+  mutate(Non_zero = ifelse(Avg_pop == 0, 0, 1))
 
-Holiday_idx <- SK_Time_HDONG_Modified$STD_YMD %in% Holiday$Date %>% which
-SK_Time_HDONG_Modified[Holiday_idx, "Holiday"] <- 1
 ```
 
 
@@ -265,10 +312,16 @@ glm_SK_Time_Gamma_ <- glm(Avg_pop ~ HDONG_CD + Time + Week_Day + avg_temp + avg_
                           family = Gamma(link = "log"))
 ```
 
+```{r}
+glm_SK_Time_Gamma_Hol <- glm(Avg_pop ~ HDONG_CD + Time + Week_Day + avg_temp + avg_pm10 + avg_pm25 + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + Holiday + Time_Group + Holiday:Time_Group + Holiday:pm10_CTG + Holiday:pm25_CTG + Holiday:pm10_Wrn + Holiday:pm25_Wrn, 
+                          data = SK_Time_HDONG_Modified_ %>% filter(Non_zero == 1), 
+                          family = Gamma(link = "log"))
+```
 
 
 
-Gamma는 Interactino 모델이 더 좋다.
+
+Gamma는 Interactino 모델이 더 좋다. 
 
 
 MSE Test 해보기 (Holiday factor 여부에 관하여)
@@ -278,7 +331,7 @@ MSE Test 해보기 (Holiday factor 여부에 관하여)
 ```{r eval = FALSE}
 cv_glm_SK_Time_Gamma <- cvFit(glm_SK_Time_Gamma, data = SK_Time_HDONG_Modified_ %>% 
                                 filter(Non_zero == 1) %>% na.omit() %>%
-                          select(-STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), 
+                          select(-STD_YM, -STD_YMD, -HDONG_NM, -Non_zero, -Holiday), 
                           y = SK_Time_HDONG_Modified %>% na.omit() %>% filter(Non_zero == 1) %>% .$Avg_pop, 
                           cost = rmspe, K = 5, R = 1)
 ```
@@ -286,6 +339,15 @@ cv_glm_SK_Time_Gamma <- cvFit(glm_SK_Time_Gamma, data = SK_Time_HDONG_Modified_ 
 
 ```{r eval = FALSE}
 cv_glm_SK_Time_Gamma_ <- cvFit(glm_SK_Time_Gamma_, data = SK_Time_HDONG_Modified_ %>% 
+                                filter(Non_zero == 1) %>% na.omit() %>%
+                          select(-STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), 
+                          y = SK_Time_HDONG_Modified %>% na.omit() %>% filter(Non_zero == 1) %>% .$Avg_pop, 
+                          cost = rmspe, K = 5, R = 1)
+```
+
+
+```{r}
+cv_glm_SK_Time_Gamma_Hol <- cvFit(glm_SK_Time_Gamma_Hol, data = SK_Time_HDONG_Modified_ %>% 
                                 filter(Non_zero == 1) %>% na.omit() %>%
                           select(-STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), 
                           y = SK_Time_HDONG_Modified %>% na.omit() %>% filter(Non_zero == 1) %>% .$Avg_pop, 
@@ -312,6 +374,8 @@ summary(glm_SK_Time_Binom_)
 summary(glm_SK_Time_Gamma_)
 ```
 
+
+Holiday Interaction은 큰 소용 없음. glm_SK_Time_Gamma_ 선택.
 
 # GS
 
@@ -389,18 +453,19 @@ ggplot(Binded) +
 
 ```{r eval = FALSE}
 glm_Dist_All <- glm( AMT_IND ~ Month + avg_temp + avg_pm10 + avg_pm25 +
-                     factor(HDONG_NM) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn , 
+                     factor(HDONG_NM) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + Holiday + pm10_CTG:Holiday + pm25_CTG:Holiday + pm10_Wrn:Holiday + pm25_Wrn:Holiday, 
               data = Dist_Modified %>% na.omit(), family = Gamma(link = "log"))
 
 ```
 
 
 ```{r}
-glm_Dist_Best <- glm(AMT_IND ~ Month + avg_temp + factor(ADMD_CD) + pm10_CTG + pm10_Wrn +
-                       pm25_Wrn, data = Dist_Modified %>% na.omit(), family = Gamma(link = "log"))
+glm_Dist_Best <- glm(AMT_IND ~ Month + avg_temp + ADMD_CD + pm10_CTG + pm25_CTG + 
+    pm10_Wrn + pm25_Wrn + Holiday + pm10_CTG:Holiday + pm25_CTG:Holiday, data = Dist_Modified %>% na.omit(), family = Gamma(link = "log"))
 
 ```
 
+glm_Dist_Best : stepAIC 결과.
 
 AIC: -7641.7 (Inverse link)
 AIC: -7793.8 (log link)
@@ -458,6 +523,7 @@ No Order 모델 선택.
 ```{r}
 summary(glm_Dist_Best)
 ```
+
 
 
 ***
@@ -535,9 +601,18 @@ c(AIC(lm_Dist_bs_), BIC(lm_Dist_bs_), AIC(lm_Dist_bs), BIC(lm_Dist_bs))
 lm_Dist_ns <- lm(Real_Value ~ Month + ADMD_CD + Category + ns(avg_temp, knots = 2) + ns(avg_pm10, knots = 2)  + ns(avg_pm25, knots = 2) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + ADMD_CD:Category + ADMD_CD:Month + Month:Category, data = Real_Dist)
 ```
 
-```{r warning = FALSE}
-gam_Dist <- gam(Real_Value ~ Month + ADMD_CD + Category + s(avg_temp) + s(avg_pm10)  + s(avg_pm25) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + ADMD_CD:Category + ADMD_CD:Month + Month:Category, data = Real_Dist)
+
+
+```{r}
+gam_Dist <- mgcv::gam(Real_Value ~ Month + ADMD_CD + Category + s(avg_temp) + s(avg_pm25) + s(avg_pm10) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + ADMD_CD:Category + ADMD_CD:Month + Month:Category + Holiday + Holiday:pm10_CTG + Holiday:pm25_CTG, data = Real_Dist)
 ```
+
+```{r}
+plot(gam_Dist, pages = 1)
+```
+
+avg_pm10은 not-significant.
+
 
 ```{r eval = FALSE}
 c(AIC(lm_Dist_ns), BIC(lm_Dist_ns), AIC(gam_Dist), BIC(gam_Dist))
@@ -577,7 +652,14 @@ summary(gam_Dist)
 ```
 
 ```{r}
-gam_Dist$coefficients
+gam_Dist$coefficients %>% tbl_df
+```
+
+
+```{r eval = FALSE}
+preds_gam_Dist <- predict.gam(gam_Dist, newdata = Real_Dist %>% na.omit(), type = "terms")
+
+preds_gam_Dist1 <- predict.gam(gam_Dist, newdata = Real_Dist %>% na.omit, type = "response")
 ```
 
 
@@ -595,7 +677,7 @@ Dist에 Category 결합. 표준화해서...? spline 모델?
 
 # SH Card (Negative Binomial Regression)
 
-```{r warning = FALSE, message=FALSE}
+```{r warning = FALSE, message=FALSE, eval = FALSE}
 setwd(paste0(getwd(), "/카드매출데이터"))
 Card_File_Nm <- dir()[str_starts(dir(), pattern = "2019빅콘테스트")]
 MCT_CAT_CD <- read_xlsx(Card_File_Nm, sheet = 3, range = "B4:B165", col_names = FALSE) %>%
@@ -673,7 +755,7 @@ Card_Daily_Ord <- Card_Daily %>%
 ```
 
 
-```{r warning = F, message = F}
+```{r warning = F, message = F, eval = FALSE}
 Card_Sum_CTG_HDONG <- Card_Daily %>%
   left_join(MCT_CAT_CD, by = c("MCT_CAT_CD" = "MCT_CD")) %>%
   group_by(HDONG_CD, MCT_NM) %>%
@@ -710,7 +792,7 @@ AER의 dispersiontest 결과, true dispersion is greater than 1
 Negative Binomial glm을 사용하자.
 
 ```{r}
-glm_NB_Card <- MASS::glm.nb(USE_CNT ~ ., data = Card_Daily %>% select(-STD_DD, -AGE_CD, -USE_AMT))
+glm_NB_Card <- MASS::glm.nb(USE_CNT ~ ., data = Card_Daily %>% select(-STD_DD, -AGE_CD, -USE_AMT, -pm10_Wrn, -avg_pm10))
 
 ```
 
