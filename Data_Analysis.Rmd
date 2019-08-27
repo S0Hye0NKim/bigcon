@@ -169,8 +169,16 @@ glm_SK_Age_Gamma_Hol <- glm(Avg_pop ~ HDONG_CD + Sex + Age + AGE_CTG + avg_temp 
                          family = Gamma(link = "log"))
 ```
 
-Holiday 들어간 모형이 더 좋다.
 
+```{r}
+glm_SK_Age_Gamma_Hol_HDCTG <- glm(Avg_pop ~ HDONG_CD + Sex + Age + AGE_CTG + avg_temp + avg_pm10 + avg_pm25 + pm10_CTG + pm25_CTG + pm25_Wrn + Week_Day + Holiday + Sex:AGE_CTG + Holiday:Sex + Holiday:AGE_CTG + Holiday:pm10_CTG + HDONG_CD:pm25_CTG, 
+                         data = SK_Age_HDONG_Modified %>% filter(Non_zero == 1) %>%
+                          select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), 
+                         family = Gamma(link = "log"))
+```
+
+
+HDONG_CD와 pm25_CTG interaction 선택.
 
 
 
@@ -318,6 +326,12 @@ glm_SK_Time_Gamma_Hol <- glm(Avg_pop ~ HDONG_CD + Time + Week_Day + avg_temp + a
                           family = Gamma(link = "log"))
 ```
 
+
+```{r}
+glm_SK_Time_Gamma_Hol_HD_CTG <- glm(Avg_pop ~ HDONG_CD + Time + Week_Day + avg_temp + avg_pm10 + avg_pm25 + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + Holiday + Time_Group + Holiday:Time_Group + Holiday:pm10_CTG + Holiday:pm25_CTG + Holiday:pm10_Wrn + Holiday:pm25_Wrn + HDONG_CD:pm25_Wrn, 
+                          data = SK_Time_HDONG_Modified_ %>% filter(Non_zero == 1), 
+                          family = Gamma(link = "log"))
+```
 
 
 
@@ -604,12 +618,10 @@ lm_Dist_ns <- lm(Real_Value ~ Month + ADMD_CD + Category + ns(avg_temp, knots = 
 
 
 ```{r}
-gam_Dist <- mgcv::gam(Real_Value ~ Month + ADMD_CD + Category + s(avg_temp) + s(avg_pm25) + s(avg_pm10) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + ADMD_CD:Category + ADMD_CD:Month + Month:Category + Holiday + Holiday:pm10_CTG + Holiday:pm25_CTG, data = Real_Dist)
+gam_Dist <- mgcv::gam(Real_Value ~ Month + ADMD_CD + Category + s(avg_temp) + s(avg_pm25) + s(avg_pm10) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + ADMD_CD:Category + ADMD_CD:Month + Month:Category + Holiday + Holiday:pm10_CTG + Holiday:pm25_CTG, data = Real_Dist, select = TRUE)
 ```
 
-```{r}
-plot(gam_Dist, pages = 1)
-```
+
 
 avg_pm10은 not-significant.
 
