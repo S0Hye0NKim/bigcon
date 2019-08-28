@@ -19,9 +19,11 @@ library(nlme)
 library(cvTools)
 library(splines)
 library(gam)
+library(ggmap)
 source("bigcon_function.R")
 HDong_CD <- readRDS("HDong_CD.rds") %>%
   mutate(HDONG_CD = as.character(HDONG_CD))
+HDONG_map <- readRDS("HDONG_map.rds")
 Dust_Warning <- readRDS("Dust_Warning.rds") %>%
   dplyr::select(Date, pm10_Wrn = PM_10, pm25_Wrn = PM_25)
 Wth_Day_HDONG <- readRDS("Wth_Day_HDONG.rds") 
@@ -182,7 +184,6 @@ HDONG_CD와 pm25_CTG interaction 선택.
 
 
 
-
 ```{r eval = FALSE}
 c(AIC(glm_SK_Age_Binom), BIC(glm_SK_Age_Binom), AIC(glm_SK_Age_Gamma), BIC(glm_SK_Age_Gamma))
 ```
@@ -248,6 +249,50 @@ c(cv_glm_SK_Age_Gamma$cv, cv_glm_SK_Age_Gamma_$cv)
 ```
 
 Interaction 있는 모델 선택. + Holiday
+
+
+### 1-1-3. Inference
+
+```{r}
+summary_SK_Age <- summary(glm_SK_Age_Gamma_Hol_HDCTG)$coefficients %>% data.frame() %>%
+  rownames_to_column(var = "Variable") %>%
+  tbl_df %>%
+  `names<-`(value = c("Variable", "Estimate", "Std_Er", "t_val", "p_val"))
+```
+
+
+
+```{r}
+SK_Age_inter <- summary_SK_Age %>%
+  filter(p_val <= 0.05) %>%
+  filter(Variable %>% str_starts("HDONG_CD" %R% one_or_more(DGT) %R% ":" %R% "pm25_")) %>%
+  separate(Variable, into = c("HDONG_CD", "pm25_CTG"), sep = ":") %>%
+  mutate(HDONG_CD = parse_number(HDONG_CD) %>% as.character, 
+         pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG"))
+
+SK_Age_Main_Eff <- summary_SK_Age %>%
+  filter(p_val <= 0.05) %>%
+  filter(Variable %>% str_starts("pm25_CTG")) %>%
+  mutate(HDONG_CD = "11110515", 
+         pm25_CTG = Variable %>% str_remove("pm25_CTG")) %>%
+  select(HDONG_CD, pm25_CTG, Estimate, Std_Er, t_val, p_val)
+```
+
+```{r}
+tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6), 
+       pm25_CTG = rep(Dust_level, 36)) %>%
+  left_join(bind_rows(SK_Age_Main_Eff, SK_Age_inter) %>%
+  select(HDONG_CD, pm25_CTG, Estimate), by = c("HDONG_CD", "pm25_CTG")) %>%
+  mutate(Estimate = Estimate %>% replace_na(replace = 0)) %>%
+  left_join(HDONG_map, by = "HDONG_CD") %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = Estimate)) +
+  scale_fill_gradient2(low = "red", mid = "white", high = "blue") +
+  facet_wrap(~pm25_CTG) 
+```
+
+
+
 
 ## 1-2. SK_Time (GLS?)
 
@@ -618,7 +663,11 @@ lm_Dist_ns <- lm(Real_Value ~ Month + ADMD_CD + Category + ns(avg_temp, knots = 
 
 
 ```{r}
-gam_Dist <- mgcv::gam(Real_Value ~ Month + ADMD_CD + Category + s(avg_temp) + s(avg_pm25) + s(avg_pm10) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + ADMD_CD:Category + ADMD_CD:Month + Month:Category + Holiday + Holiday:pm10_CTG + Holiday:pm25_CTG, data = Real_Dist, select = TRUE)
+gam_Dist <- mgcv::gam(Real_Value ~ Month + ADMD_CD + Category + s(avg_temp) + s(avg_pm25) + s(avg_pm10) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + ADMD_CD:Category + ADMD_CD:Month + Month:Category + Holiday +  Category:pm10_CTG + Category:pm25_CTG, data = Real_Dist, select = TRUE)
+```
+
+```{r}
+plot(gam_Dist, pages = 1)
 ```
 
 
