@@ -271,6 +271,7 @@ SK_Age_Main_Eff_Dust <- summary_SK_Age %>%
   mutate(HDONG_CD = "11110515", 
          pm25_CTG = Variable %>% str_remove("pm25_CTG")) %>%
   select(HDONG_CD, pm25_CTG, Estimate)
+  
 
 SK_Age_Main_Eff_HDONG <- summary_SK_Age %>%
   filter(p_val <= 0.05, 
@@ -292,13 +293,22 @@ SK_Age_inter_HDONG <- summary_SK_Age %>%
 ```
 
 ```{r}
+SK_Age_pm25_coef <-  glm_SK_Age_Gamma_Hol_HDCTG$coefficients["avg_pm25"]
+
+
 tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6), 
        pm25_CTG = rep(Dust_level, 36)) %>%
   left_join(SK_Age_Main_Eff_Dust %>% select(-HDONG_CD), by = "pm25_CTG") %>%
   left_join(SK_Age_Main_Eff_HDONG %>% select(-pm25_CTG), by = "HDONG_CD", suffix = c("_Dust", "_HDONG")) %>%
   left_join(SK_Age_inter_HDONG, by = c("HDONG_CD", "pm25_CTG")) %>%
   mutate_all(replace_na, replace = 0) %>%
-  mutate(Estimate = Estimate_Dust + Estimate_HDONG + Estimate) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+         Estimate = Estimate_Dust + Estimate_HDONG + Estimate + SK_Age_pm25_coef * Correction) %>%
   select(HDONG_CD, pm25_CTG, Estimate) %>%
   left_join(HDONG_map, by = "HDONG_CD") %>%
   ggplot() +
@@ -314,7 +324,13 @@ tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6),
   left_join(SK_Age_Main_Eff_HDONG %>% select(-pm25_CTG), by = "HDONG_CD", suffix = c("_Dust", "_HDONG")) %>%
   left_join(SK_Age_inter_HDONG, by = c("HDONG_CD", "pm25_CTG")) %>%
   mutate_all(replace_na, replace = 0) %>%
-  mutate(Estimate = Estimate + Estimate_Dust) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+         Estimate = Estimate + Estimate_Dust + SK_Age_pm25_coef * Correction) %>%
   filter(pm25_CTG != "Good") %>%
   select(-Estimate_Dust, -Estimate_HDONG) %>%
   left_join(HDONG_map, by = "HDONG_CD") %>%
@@ -324,6 +340,8 @@ tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6),
   facet_wrap(~pm25_CTG)
 ```
 
+
+Correction 값으로는 pm25_CTG 별 avg_pm25의 평균 값 사용
 
 ```{r}
 tibble(pm10_CTG = rep(Dust_level, 2), 
@@ -350,8 +368,14 @@ tibble(Sex = rep(c("MAN", "WMAN"), each = 6),
   left_join(SK_Age_Main_Eff_Dust %>% select(-HDONG_CD), by = "pm25_CTG") %>%
   mutate(Estimate = Estimate %>% replace_na(0), 
          Estimate_Sex = rep(c(0, summary_SK_Age %>% filter(Variable == "SexWMAN") %>% 
-                                .$Estimate), each = 6), 
-         Estimate = Estimate + Estimate_Sex) %>%
+                                .$Estimate), each = 6),
+         Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+         Estimate = Estimate + Estimate_Sex + SK_Age_pm25_coef * Correction) %>%
   ggplot() +
   geom_line(aes(x = pm25_CTG, y = Estimate, group = Sex, color = Sex))
 ```
@@ -379,7 +403,13 @@ tibble(AGE_CTG = rep(c("Youth", "Rising", "Middle", "Senior"), 6),
   left_join(SK_Age_Main_Eff_Dust %>% select(-HDONG_CD), by = "pm25_CTG", suffix = c("_Inter", "_Dust")) %>%
   left_join(SK_Age_Main_Eff_AGE_CTG, by = "AGE_CTG") %>%
   mutate_all(replace_na, replace = 0) %>%
-  mutate(Estimate = Estimate_Inter + Estimate_Dust ) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+         Estimate = Estimate_Inter + Estimate_Dust+ SK_Age_pm25_coef * Correction) %>%
   ggplot() +
   geom_line(aes(x = pm25_CTG, y = Estimate, group = AGE_CTG, color = AGE_CTG)) 
 ```
@@ -610,9 +640,10 @@ SK_Time_inter_three <- summary_SK_Time %>%
 ```
 
 ```{r}
-Week_Day <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+Week_Day_lev <- c("Fri", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu")
+SK_Time_pm25_coef <- glm_SK_Time_Gamma_Hol_HD_CTG$coefficients["avg_pm25"]
 
-SK_Time_coef <- tibble(Week_Day = rep(Week_Day, each = 12), 
+SK_Time_coef <- tibble(Week_Day = rep(Week_Day_lev, each = 12), 
        pm25_CTG = rep(Dust_level,7) %>% rep(each = 2), 
        Holiday = rep(c(0, 1), 42) %>% as.character) %>%
   left_join(SK_Time_Main_Eff_Week_Day, by = "Week_Day") %>%
@@ -622,10 +653,18 @@ SK_Time_coef <- tibble(Week_Day = rep(Week_Day, each = 12),
   left_join(SK_Time_Week_pm25_CTG, by = c("Week_Day", "pm25_CTG")) %>%
   left_join(SK_Time_pm25_CTG_Hol, by = c("pm25_CTG", "Holiday")) %>%
   left_join(SK_Time_inter_three, by = c("Week_Day", "pm25_CTG", "Holiday")) %>%
-  mutate_all(replace_na, 0)
+  mutate_all(replace_na, 0) %>%
+  mutate(Week_Day = Week_Day %>% factor(levels = Week_Day_lev))
   
 SK_Time_coef %>%
-  mutate(Estimate = val_Week + val_Dust + val_Hol + val_Week_Hol + val_Week_pm25 + val_pm25_Hol + val_inter) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+    Estimate = val_Week + val_Dust + val_Hol + val_Week_Hol + val_Week_pm25 + val_pm25_Hol + 
+      val_inter + SK_Time_pm25_coef * Correction) %>%
   select(Week_Day, pm25_CTG, Holiday, Estimate) %>%
   filter(!(Holiday == "1"& Week_Day != "Sat"& Week_Day != "Sun")) %>%
   ggplot() +
@@ -643,6 +682,10 @@ SK_Time_coef %>%
   ggplot() +
   geom_line(aes(x = Holiday, y = Estimate, group = Week_Day, color = Week_Day))
 ```
+
+
+Tue, Wed, Thu, Fri 는 Interaction값 동일!
+
 
 ```{r}
 SK_Time_Main_Eff_Time_Gr <- summary_SK_Time %>%
@@ -672,6 +715,152 @@ SK_Time_Gr_pm25 <- summary_SK_Time %>%
 ```
 
 
+```{r}
+tibble(Time_Group = rep(c("Afternoon", "Dawn", "Evening", "Rush_Hour"), each = 2), 
+       Holiday = rep(c(0, 1), 4) %>% as.character) %>%
+  left_join(SK_Time_Main_Eff_Time_Gr, by = "Time_Group") %>%
+  left_join(SK_Time_Main_Eff_Hol, by = "Holiday") %>%
+  left_join(SK_Time_Gr_Hol, by = c("Time_Group", "Holiday")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Estimate = val_Time_GR + val_Hol + val_Time_Hol) %>%
+  select(Time_Group, Holiday, Estimate) %>%
+  ggplot() +
+  geom_line(aes(x = Holiday, y = Estimate, group = Time_Group, color = Time_Group))
+```
+
+
+```{r}
+tibble(Time_Group = rep(c("Afternoon", "Dawn", "Evening", "Rush_Hour"), each = 6), 
+       pm25_CTG = rep(Dust_level, 4)) %>%
+  left_join(SK_Time_Main_Eff_Time_Gr, by = "Time_Group") %>%
+  left_join(SK_Time_Main_Eff_Dust, by = "pm25_CTG") %>%
+  left_join(SK_Time_Gr_pm25, by = c("Time_Group", "pm25_CTG")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+    Estimate = val_Dust + val_Time_pm25 + SK_Time_pm25_coef * Correction)  %>%
+  select(Time_Group, pm25_CTG, Estimate) %>%
+  ggplot() +
+  geom_line(aes(x = pm25_CTG, y = Estimate, group = Time_Group, color = Time_Group))
+```
+
+```{r}
+SK_Time_Main_Eff_HDONG_CD  <- summary_SK_Time %>%
+  filter(p_val <= 0.05, 
+         Variable %>% str_detect("HDONG_CD"), 
+         !Variable %>% str_detect("pm25_CTG")) %>%
+  mutate(HDONG_CD = parse_number(Variable) %>% as.character) %>%
+  select(HDONG_CD, val_HDONG_CD = Estimate)
+
+SK_Time_HDONG_Dust <- summary_SK_Time %>%
+  filter(p_val <= 0.05, 
+         Variable %>% str_detect("HDONG_CD"), 
+         Variable %>% str_detect("pm25_CTG")) %>%
+  separate(Variable, into = c("HDONG_CD", "pm25_CTG"), sep = ":") %>%
+  mutate(HDONG_CD = HDONG_CD %>% str_remove("HDONG_CD"), 
+         pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG")) %>%
+  select(HDONG_CD, pm25_CTG, val_HDONG_Dust = Estimate)
+```
+
+
+
+```{r}
+tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6), 
+       pm25_CTG = rep(Dust_level, 36)) %>%
+  left_join(SK_Time_Main_Eff_HDONG_CD, by = "HDONG_CD") %>%
+  left_join(SK_Time_Main_Eff_Dust, by = "pm25_CTG") %>%
+  left_join(SK_Time_HDONG_Dust, by = c("HDONG_CD", "pm25_CTG")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+         Estimate = val_HDONG_CD + val_Dust + val_HDONG_Dust + 
+           SK_Time_pm25_coef * Correction) %>%
+  select(HDONG_CD, pm25_CTG, Estimate) %>%
+  left_join(HDONG_map, by = "HDONG_CD") %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = Estimate), color = "black") +
+  scale_fill_gradient2(low = "red", high = "blue") +
+  facet_wrap(~pm25_CTG)
+```
+
+
+
+
+```{r}
+tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6), 
+       pm25_CTG = rep(Dust_level, 36)) %>%
+  left_join(SK_Time_Main_Eff_HDONG_CD, by = "HDONG_CD") %>%
+  left_join(SK_Time_Main_Eff_Dust, by = "pm25_CTG") %>%
+  left_join(SK_Time_HDONG_Dust, by = c("HDONG_CD", "pm25_CTG")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+         Estimate = val_Dust + val_HDONG_Dust +
+           SK_Time_pm25_coef * Correction) %>%
+  select(HDONG_CD, pm25_CTG, Estimate) %>%
+  filter(pm25_CTG != "Good") %>%
+  left_join(HDONG_map, by = "HDONG_CD") %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = Estimate), color = "black") +
+  scale_fill_gradient2(low = "red", high = "blue") +
+  facet_wrap(~pm25_CTG)
+```
+
+```{r message = FALSE}
+Age_seq <- seq(0, 100, by = 5)
+JONGNO_GU <- read_excel("Report_Population.xls", range = "C8:C58", col_names = "HDONG_NM") %>% 
+  pull() %>% unique
+NOWON_GU <- read_excel("Report_Population.xls", range = "C509:C565", col_names = "HDONG_NM") %>% 
+  pull() %>% unique
+
+People_Jongno <- read_excel("Report_Population.xls", range = "D1:Z58", col_types = "text") %>%
+  `names<-`(value = c("Type", "Total", paste0("Age_", Age_seq))) %>%
+  filter(Type == "계")
+People_Jongno <- People_Jongno[-(1:2), ] %>%
+  mutate(Type = JONGNO_GU)
+People_Nowon <- read_excel("Report_Population.xls", range = "D509:Z565", col_names = FALSE, 
+                           col_types = "text") %>%
+  `names<-`(value = c("Type", "Total", paste0("Age_", Age_seq))) %>%
+  filter(Type == "계") %>%
+  mutate(Type = NOWON_GU)
+
+People <- bind_rows(People_Jongno, People_Nowon) %>%
+  mutate(Type = str_replace_all(Type, pattern = "·", replacement = ".")) %>%
+  left_join(y = HDong_CD, by = c("Type" = "HDONG_NM"))
+```
+
+```{r}
+Target_HDONG <- c("11350619", "11350600", "11110640", "11110680", "11110550")
+People %>%
+  gather(key = "AGE", value = "value", -Type, -Total, -HDONG_CD, -GU_CD, -GU_NM) %>%
+  select(HDONG_CD, AGE, value) %>%
+  mutate(AGE = parse_number(AGE), value = as.numeric(value)) %>%
+  filter(HDONG_CD %in% Target_HDONG) %>%
+  mutate(Type = ifelse(HDONG_CD == 11110550, "-", "+"))%>%
+  left_join(HDong_CD, by = "HDONG_CD") %>%
+  ggplot() +
+  geom_col(aes(x = AGE, y = value, fill = Type), color = "white") +
+  facet_wrap(~HDONG_NM, scales = "free")
+```
+
+11350619 (중계본동) (45, 50 대가 제일 많다.)
+11350600 (공릉2동)  (20, 45, 50 대가 제일 많다.)
+11110640(이화동)
+11110680(창신2동)
+***
+11110550 (부암동)
 
 # GS
 
