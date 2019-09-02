@@ -29,6 +29,7 @@ Card <- readRDS("Card.rds")
 Dist <- readRDS("Dist.rds")
 SK_Age <- readRDS("SK_Age.rds")
 SK_Time <- readRDS("SK_Time.rds")
+MCT_CAT_CD <- readRDS("MCT_CAT_CD.rds")
 
 Holiday <- read_excel("Holiday_List.xlsx") %>%
   mutate(Date = as.character(Date))
@@ -44,7 +45,7 @@ Wth_Day_HDONG <- Wth_Day_HDONG %>%
 
 Wth_Day_HDONG <- Wth_Day_HDONG %>%
   mutate(Week_Day = strftime(Day, format = "%a") %>% as.character, 
-         Holiday = ifelse(Week_Day %in% c("Sun", "Sat"), 1, 0))
+         Holiday = ifelse(Week_Day %in% c("토", "일"), 1, 0))
 
 Holiday_idx <- Wth_Day_HDONG$Day %in% Holiday$Date %>% which
 Wth_Day_HDONG[Holiday_idx, "Holiday"] <- 1
@@ -112,6 +113,9 @@ Dist_Modified <- Dist %>%
   left_join(HDong_CD, by = c("ADMD_CD" = "HDONG_CD")) %>%
   mutate(ADMD_CD = factor(ADMD_CD))
 ```
+
+AMT\_IND 높은 순서대로 가회동, 부암동, 중계4동, 사직동, 중계본동,
+평창동, 무악동, 삼청동, 이화동, 상계8동 등등…
 
 ``` r
 Real_Dist <- Dist %>%
@@ -198,31 +202,6 @@ summary_SK_Age <- summary(glm_SK_Age_Gamma_Hol_HDCTG)$coefficients %>% data.fram
   rownames_to_column(var = "Variable") %>%
   tbl_df %>%
   `names<-`(value = c("Variable", "Estimate", "Std_Er", "t_val", "p_val"))
-```
-
-``` r
-SK_Age_Main_Eff_Dust <- summary_SK_Age %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm25_CTG"), 
-         !Variable %>% str_detect("HDONG_CD|Sex|AGE_CTG")) %>%
-  mutate(pm25_CTG = Variable %>% str_remove("pm25_CTG")) %>%
-  select(pm25_CTG, val_Dust = Estimate)
-
-SK_Age_Main_Eff_HDONG <- summary_SK_Age %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("HDONG_CD"), 
-         !Variable %>% str_detect("pm25_CTG")) %>%
-  mutate(HDONG_CD = Variable %>% str_remove("HDONG_CD")) %>%
-  select(HDONG_CD, val_HDONG = Estimate)
-
-SK_Age_Dust_HDONG <- summary_SK_Age %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("HDONG_CD"), 
-         Variable %>% str_detect("pm25_CTG")) %>%
-  separate(Variable, into = c("HDONG_CD", "pm25_CTG"), sep = ":") %>%
-  mutate(HDONG_CD = HDONG_CD %>% str_remove("HDONG_CD"), 
-         pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG")) %>%
-  select(HDONG_CD, pm25_CTG, val_Dust_HDONG = Estimate)
 ```
 
 ``` r
@@ -365,128 +344,6 @@ summary_SK_Time <- summary(glm_SK_Time_Gamma_Hol_HD_CTG)$coefficients %>% data.f
   rownames_to_column(var = "Variable") %>%
   tbl_df %>%
   `names<-`(value = c("Variable", "Estimate", "Std_Er", "t_val", "p_val"))
-```
-
-``` r
-SK_Time_Main_Eff_Week_Day <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Week_Day"), 
-         !Variable %>% str_detect("pm25_CTG|Holiday")) %>%
-  mutate(Week_Day = Variable %>% str_remove("Week_Day")) %>%
-  select(Week_Day, val_Week = Estimate)
-
-SK_Time_Main_Eff_Dust <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm25_CTG"), 
-         !Variable %>% str_detect("Holiday|HDONG_CD|Week_Day|Time_Group")) %>%
-  mutate(pm25_CTG = Variable %>% str_remove("pm25_CTG")) %>%
-  select(pm25_CTG, val_Dust = Estimate)
-
-SK_Time_Main_Eff_Hol <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Holiday"), 
-         !Variable %>% str_detect("pm10_CTG|pm25_CTG|Week_Day|Time_Group|Wrn")) %>%
-  mutate(Holiday = Variable %>% str_remove("Holiday")) %>%
-  select(Holiday, val_Hol = Estimate)
-
-SK_Time_Week_pm25_CTG <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Week_Day"), 
-         Variable %>% str_detect("pm25_CTG"), 
-         !Variable %>% str_detect("Holiday")) %>%
-  separate(Variable, into = c("Week_Day", "pm25_CTG"), sep = ":") %>%
-  mutate(Week_Day = Week_Day %>% str_remove("Week_Day"), 
-         pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG")) %>%
-  select(Week_Day, pm25_CTG, val_Week_pm25 = Estimate)
-
-
-SK_Time_Week_Holiday <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Week_Day"), 
-         Variable %>% str_detect("Holiday"), 
-         !Variable %>% str_detect("pm25_CTG")) %>%
-  separate(Variable, into = c("Week_Day", "Holiday"), sep = ":") %>%
-  mutate(Week_Day = Week_Day %>% str_remove("Week_Day"), 
-         Holiday = Holiday %>% str_remove("Holiday")) %>%
-  select(Week_Day, Holiday, val_Week_Hol = Estimate)
-
-SK_Time_pm25_CTG_Hol <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Holiday"), 
-         Variable %>% str_detect("pm25_CTG"), 
-         !Variable %>% str_detect("Week_Day")) %>%
-  separate(Variable, into = c("pm25_CTG", "Holiday"), sep = ":") %>%
-  mutate(pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG"), 
-         Holiday = Holiday %>% str_remove("Holiday")) %>%
-  select(pm25_CTG, Holiday, val_pm25_Hol = Estimate)
-
-SK_Time_inter_three <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm25_CTG"), 
-         Variable %>% str_detect("Holiday"), 
-         Variable %>% str_detect("Week_Day")) %>%
-  separate(Variable, into = c("Week_Day", "pm25_CTG", "Holiday"), sep = ":") %>%
-  mutate(Week_Day = Week_Day %>% str_remove("Week_Day"), 
-         pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG"), 
-         Holiday = Holiday %>% str_remove("Holiday")) %>%
-  select(Week_Day, pm25_CTG, Holiday, val_inter = Estimate)
-
-SK_Time_Main_Eff_Time_Gr <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Time_Group"), 
-         !Variable %>% str_detect("Holiday|pm25_CTG")) %>%
-  mutate(Time_Group = Variable %>% str_remove("Time_Group")) %>%
-  select(Time_Group, val_Time_GR = Estimate)
-
-SK_Time_Gr_Hol <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Time_Group"), 
-         Variable %>% str_detect("Holiday")) %>%
-  separate(Variable, into = c("Holiday", "Time_Group"), sep = ":") %>%
-  mutate(Holiday = Holiday %>% str_remove("Holiday"), 
-         Time_Group = Time_Group %>% str_remove("Time_Group")) %>%
-  select(Holiday, Time_Group, val_Time_Hol = Estimate)
-
-SK_Time_Gr_pm25 <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Time_Group"), 
-         Variable %>% str_detect("pm25_CTG")) %>%
-  separate(Variable, into = c("pm25_CTG", "Time_Group"), ":") %>%
-  mutate(pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG"), 
-         Time_Group = Time_Group %>% str_remove("Time_Group")) %>%
-  select(pm25_CTG, Time_Group, val_Time_pm25 = Estimate)
-
-SK_Time_Main_Eff_HDONG_CD  <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("HDONG_CD"), 
-         !Variable %>% str_detect("pm25_CTG")) %>%
-  mutate(HDONG_CD = parse_number(Variable) %>% as.character) %>%
-  select(HDONG_CD, val_HDONG_CD = Estimate)
-
-SK_Time_HDONG_Dust <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("HDONG_CD"), 
-         Variable %>% str_detect("pm25_CTG")) %>%
-  separate(Variable, into = c("HDONG_CD", "pm25_CTG"), sep = ":") %>%
-  mutate(HDONG_CD = HDONG_CD %>% str_remove("HDONG_CD"), 
-         pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG")) %>%
-  select(HDONG_CD, pm25_CTG, val_HDONG_Dust = Estimate)
-
-SK_Time_Main_Eff_Wrn <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm25_Wrn"), 
-         !Variable %>% str_detect("Holiday")) %>%
-  mutate(pm25_Wrn = Variable %>% str_remove("pm25_Wrn")) %>%
-  select(pm25_Wrn, val_Wrn = Estimate)
-
-SK_Time_Wrn_Hol <- summary_SK_Time %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm25_Wrn"), 
-         Variable %>% str_detect("Holiday")) %>%
-  separate(Variable, into = c("pm25_Wrn", "Holiday"), sep = ":") %>%
-  mutate(pm25_Wrn = pm25_Wrn %>% str_remove("pm25_Wrn"), 
-         Holiday = Holiday %>% str_remove("Holiday") %>% as.character) %>%
-  select(pm25_Wrn, Holiday, val_Wrn_Hol = Estimate)
 ```
 
 ``` r
@@ -652,6 +509,7 @@ People <- bind_rows(People_Jongno, People_Nowon) %>%
 ```
 
 ``` r
+People <- readRDS("People.rds")
 Target_HDONG <- c("11350619", "11350600", "11110640", "11110680", "11110550", "11350560")
 People %>%
   gather(key = "AGE", value = "value", -Type, -Total, -HDONG_CD, -GU_CD, -GU_NM) %>%
@@ -666,9 +524,21 @@ People %>%
   ggtitle("Population for Suspicious HDONG")
 ```
 
-11350619 (중계본동) (45, 50 대가 제일 많다.) 11350600 (공릉2동) (20, 45,
-50 대가 제일 많다.) 11110640(이화동) 11110680(창신2동) \*\*\* 11110550
-(부암동) 11350560(월계1동)
+![](Inferences_files/figure-markdown_github/Population%20Histogram%20for%205%20suspicious%20HDONG-1.png)
+
+11350619 (중계본동) (45, 50 대가 제일 많다.)
+
+11350600 (공릉2동) (20, 45, 50 대가 제일 많다.)
+
+11110640(이화동)
+
+11110680(창신2동)
+
+------------------------------------------------------------------------
+
+11110550 (부암동)
+
+11350560(월계1동)
 
 ``` r
 tibble(pm25_Wrn = rep(Wrn_level, each = 2), 
@@ -691,7 +561,7 @@ tibble(pm25_Wrn = rep(Wrn_level, each = 2),
 3) Dist
 -------
 
-### (1) ADMD\_CD
+### (1) glm\_Dist
 
 Use Gamma-glm
 
@@ -700,88 +570,6 @@ summary_glm_Dist <- summary(glm_Dist_Best)$coefficients %>% data.frame() %>%
   rownames_to_column(var = "Variable") %>%
   tbl_df %>%
   `names<-`(value = c("Variable", "Estimate", "Std_Er", "t_val", "p_val"))
-```
-
-``` r
-glm_Dist_Main_Eff_pm25 <- summary_glm_Dist %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm25_CTG"), 
-         !Variable %>% str_detect("Holiday")) %>%
-  mutate(pm25_CTG = Variable %>% str_remove("pm25_CTG")) %>%
-  select(pm25_CTG, val_pm25 = Estimate)
-
-glm_Dist_Main_Eff_Hol <- summary_glm_Dist %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Holiday"), 
-         !Variable %>% str_detect(":")) %>%
-  mutate(Holiday = Variable %>% str_remove("Holiday")) %>%
-  select(Holiday, val_Hol = Estimate)
-
-glm_Dist_pm25_Hol <- summary_glm_Dist %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm25_CTG"), 
-         Variable %>% str_detect("Holiday")) %>%
-  separate(Variable, into = c("pm25_CTG", "Holiday"), ":") %>%
-  mutate(pm25_CTG = pm25_CTG %>% str_remove("pm25_CTG"), 
-         Holiday = Holiday %>% str_remove("Holiday")) %>%
-  select(pm25_CTG, Holiday, val_pm25_Hol = Estimate)
-
-glm_Dist_pm10_Hol <- summary_glm_Dist %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm10_CTG"), 
-         Variable %>% str_detect("Holiday")) %>%
-  separate(Variable, into = c("pm10_CTG", "Holiday"), sep = ":") %>%
-  mutate(pm10_CTG = pm10_CTG %>% str_remove("pm10_CTG"), 
-         Holiday = Holiday %>% str_remove("Holiday")) %>%
-  select(pm10_CTG, Holiday, val_pm10_Hol = Estimate)
-
-glm_Dist_pm10_Wrn <- summary_glm_Dist %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm10_Wrn"), 
-         !Variable %>% str_detect("Holiday")) %>%
-  mutate(pm10_Wrn = Variable %>% str_remove("pm10_Wrn")) %>%
-  select(pm10_Wrn, val_pm10_Wrn = Estimate)
-
-glm_Dist_pm10_Wrn_Hol <- summary_glm_Dist %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("pm10_Wrn"), 
-         Variable %>% str_detect("Holiday")) %>%
-  separate(Variable, into = c("pm10_Wrn", "Holiday"), sep = ":") %>%
-  mutate(pm10_Wrn = pm10_Wrn %>% str_remove("pm10_Wrn"), 
-         Holiday = Holiday %>% str_remove("Holiday")) %>%
-  select(pm10_Wrn, Holiday, val_pm10_Wrn_Hol = Estimate)
-
-glm_Dist_Main_Eff_Mon <- summary_glm_Dist %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Month"),
-         !Variable %>% str_detect(":")) %>%
-  mutate(Month = Variable %>% str_remove("Month")) %>%
-  select(Month, val_Mon = Estimate)
-
-glm_Dist_Mon_pm10_CTG <- summary_glm_Dist %>%
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("Month"),
-         Variable %>% str_detect(":")) %>%
-  separate(Variable, into = c("Month", "pm10_CTG"), sep = ":") %>%
-  mutate(Month = Month %>% str_remove("Month"), 
-         pm10_CTG = pm10_CTG %>% str_remove("pm10_CTG")) %>%
-  select(Month, pm10_CTG, val_Mon_pm10 = Estimate)
-
-glm_Dist_Main_Eff_HDONG <- summary_glm_Dist %>% 
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("ADMD_CD"), 
-         !Variable %>% str_detect(":")) %>%
-  mutate(HDONG_CD = Variable %>% str_remove("ADMD_CD")) %>%
-  select(HDONG_CD, val_HDONG = Estimate)
-
-glm_Dist_HDONG_pm10_CTG <- summary_glm_Dist %>% 
-  filter(p_val <= 0.05, 
-         Variable %>% str_detect("ADMD_CD"), 
-         Variable %>% str_detect(":")) %>%
-  separate(Variable, into = c("HDONG_CD", "pm10_CTG"), sep = ":") %>%
-  mutate(HDONG_CD = HDONG_CD %>% str_remove("ADMD_CD"), 
-         pm10_CTG = pm10_CTG %>% str_remove("pm10_CTG")) %>%
-  select(HDONG_CD, pm10_CTG, val_HDONG_pm10 = Estimate)
 ```
 
 -   pm10\_CTG 의 Main\_Eff 는 없음!
@@ -904,3 +692,167 @@ tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6),
 ```
 
 ![](Inferences_files/figure-markdown_github/HDONG_CD%20and%20pm10_CTG(Exclude%20HDONG%20effect)-1.png)
+
+### (2) gam\_Dist
+
+``` r
+plot(gam_Dist, pages = 1)
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-14-1.png)
+
+``` r
+summary_gam_Dist <- summary(gam_Dist)$p.table %>%
+  data.frame() %>%
+  rownames_to_column(var = "Variable") %>%
+  tbl_df %>%
+  `names<-`(value = c("Variable", "Estimate", "Std_Er", "t_val", "p_val"))
+```
+
+``` r
+Ref_Data <- tibble(avg_pm10 = c(22, 40, 61, 86, 117, 207), 
+                   avg_pm25 = c(10, 20, 30, 43, 60, 115), 
+                   Month = "Apr", ADMD_CD = "11110515", Category = "10", avg_temp = 30, 
+                   pm10_CTG = "Good", pm25_CTG = "Good", pm10_Wrn = "No_Wrn", 
+                   pm25_Wrn = "No_Wrn", Week_Day = "금", Holiday = "0")
+
+preds_gam_Dist <- mgcv::predict.gam(gam_Dist, newdata = Ref_Data, type = "terms") %>% data.frame %>% 
+  select(paste0("s.", c("avg_temp", "avg_pm25", "avg_pm10"), ".")) %>%
+  mutate(DUst_level = Dust_level) %>%
+  `colnames<-`(value = c("avg_temp", "avg_pm25", "avg_pm10", "Dust_level"))
+```
+
+``` r
+Target_MCT_CTG <- c(20, 30, 40, 50, 60, 70, 80)
+
+tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 23), 
+       Category = rep(MCT_CAT_CD$MCT_CD, 36), 
+       Category_NM = rep(MCT_CAT_CD$MCT_NM, 36)) %>%
+  left_join(gam_Dist_Main_Eff_HDONG, by = "HDONG_CD") %>%
+  left_join(gam_Dist_Main_Eff_CTG, by = "Category") %>%
+  left_join(gam_Dist_HDONG_CTG, by = c("HDONG_CD", "Category")) %>%
+  left_join(HDong_CD, by = "HDONG_CD") %>% 
+  filter(Category %in% Target_MCT_CTG) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Estimate = val_CTG + val_HDONG_CTG) %>%
+  left_join(HDONG_map, by = "HDONG_CD") %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = Estimate), color = "black") +
+  scale_fill_gradient2(low = "red", high = "blue") +
+  facet_wrap(~Category_NM)
+```
+
+![](Inferences_files/figure-markdown_github/HDONG_CD%20and%20Category-1.png)
+
+가구, 레저용품, 서적문구, 요식업소, 유통업, 의료기관, 자동차판매만
+유의미
+
+``` r
+tibble(Category = rep(MCT_CAT_CD$MCT_CD, each = 2), 
+       Holiday = rep(c(0, 1), 23) %>% as.character) %>%
+  left_join(gam_Dist_Main_Eff_CTG, by = "Category") %>%
+  left_join(gam_Dist_Main_Eff_Hol, by = "Holiday") %>%
+  left_join(gam_Dist_CTG_Hol, by = c("Category", "Holiday")) %>%
+  left_join(MCT_CAT_CD, by = c("Category" = "MCT_CD")) %>% 
+  mutate_all(replace_na, 0) %>%
+  mutate(Estimate = val_CTG + val_Hol + val_CTG_Hol) %>%
+  ggplot() +
+  geom_bar(aes(x = MCT_NM, y = Estimate, fill = Holiday), stat = "identity", position = "dodge",
+           alpha = 0.5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+![](Inferences_files/figure-markdown_github/Holiday%20and%20Category-1.png)
+
+``` r
+tibble(Category = rep(MCT_CAT_CD$MCT_CD, 12), 
+       pm25_CTG = rep(Dust_level, 23) %>% rep(each = 2), 
+       Holiday = rep(c(0, 1), 138) %>% as.character) %>%
+  left_join(gam_Dist_Main_Eff_CTG, by = "Category") %>%
+  left_join(gam_Dist_Main_Eff_pm25, by = "pm25_CTG") %>%
+  left_join(gam_Dist_Main_Eff_Hol, by = "Holiday") %>%
+  left_join(gam_Dist_CTG_pm25, by = c("Category", "pm25_CTG")) %>%
+  left_join(gam_Dist_CTG_Hol, by = c("Category", "Holiday")) %>%
+  left_join(gam_Dist_pm25_CTG_Hol, by = c("pm25_CTG", "Holiday")) %>%
+  left_join(gam_Dist_3_inter, by = c("Category", "pm25_CTG", "Holiday")) %>%
+  mutate_all(replace_na, 0) %>%
+  left_join(preds_gam_Dist, by = c("pm25_CTG" = "Dust_level")) %>%
+  left_join(MCT_CAT_CD, by = c("Category" = "MCT_CD")) %>% 
+  mutate(Estimate = val_CTG + val_pm25 + val_Hol + val_CTG_pm25 + val_CTG_Hol + val_pm25_CTG_Hol +
+           val_3_inter + avg_pm10) %>%
+  ggplot() +
+  geom_line(aes(x = pm25_CTG, y = Estimate, group = MCT_NM, color = MCT_NM)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_wrap(~Holiday)
+```
+
+![](Inferences_files/figure-markdown_github/pm25_CTG%20and%20Category%20and%20Holiday-1.png)
+
+``` r
+tibble(Category = rep(MCT_CAT_CD$MCT_CD, each = 6), 
+       Dust = rep(Dust_level, 23)) %>%
+  left_join(gam_Dist_Main_Eff_pm10, by = c("Dust" = "pm10_CTG")) %>%
+  left_join(gam_Dist_Main_Eff_pm25, by = c("Dust" = "pm25_CTG")) %>%
+  left_join(gam_Dist_Main_Eff_CTG, by = "Category") %>%
+  left_join(gam_Dist_CTG_pm10, by = c("Category", "Dust" = "pm10_CTG")) %>%
+  left_join(gam_Dist_CTG_pm25, by = c("Category", "Dust" = "pm25_CTG")) %>%
+  left_join(preds_gam_Dist, by = c("Dust" = "Dust_level")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Estimate_pm10 = val_pm10 + val_CTG + val_CTG_pm10 + avg_pm10, 
+         Estimate_pm25 = val_pm25 + val_CTG + val_CTG_pm25 + avg_pm25) %>%
+  select(Category, Dust, Estimate_pm10, Estimate_pm25) %>%
+  gather(key = "Dust_Type", value = "Estimate", -Category, -Dust) %>%
+  left_join(MCT_CAT_CD, by = c("Category" = "MCT_CD")) %>% 
+  mutate(Dust_Type = Dust_Type %>% str_remove("Estimate_")) %>%
+  ggplot() +
+  geom_line(aes(x = Dust, y = Estimate, color = MCT_NM, group = MCT_NM)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_wrap(~Dust_Type)
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-17-1.png)
+
+``` r
+Exclude_HDONG <- c("11110515", "11110540", "11110570", "11110680", "11110700", "11350570", "11350612", 
+                   "11350621", "11350624", "11350630", "11350700", "11350710")
+
+tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"), 
+                   each = 36), 
+       HDONG_CD = rep(HDong_CD$HDONG_CD, 12)) %>%
+  left_join(gam_Dist_Main_Eff_Mon, by = "Month") %>%
+  left_join(gam_Dist_Main_Eff_HDONG, by = "HDONG_CD") %>%
+  left_join(gam_Dist_Mon_HDONG, by = c("Month", "HDONG_CD")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Estimate = val_HDONG + val_Mon_HDONG) %>%
+  filter(!HDONG_CD %in% Exclude_HDONG) %>%
+  left_join(HDong_CD, by = "HDONG_CD") %>% 
+  ggplot() +
+  geom_bar(aes(x = Month, y = Estimate, fill = GU_NM), stat = "identity", alpha = 0.7) +
+  theme(axis.text.x=element_blank(), 
+        axis.text.y = element_blank()) +
+  facet_wrap(~HDONG_NM, scales = "free")
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-18-1.png)
+
+``` r
+tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"), 
+                   each = 36), 
+       HDONG_CD = rep(HDong_CD$HDONG_CD, 12)) %>%
+  left_join(gam_Dist_Main_Eff_Mon, by = "Month") %>%
+  left_join(gam_Dist_Main_Eff_HDONG, by = "HDONG_CD") %>%
+  left_join(gam_Dist_Mon_HDONG, by = c("Month", "HDONG_CD")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Estimate = val_HDONG + val_Mon_HDONG) %>%
+  filter(!HDONG_CD %in% Exclude_HDONG) %>%
+  left_join(HDong_CD, by = "HDONG_CD") %>% 
+  ggplot() +
+  geom_bar(aes(x = Month, y = Estimate, fill = GU_NM), stat = "identity", alpha = 0.7) +
+  theme(axis.text.x=element_blank()) +
+  facet_wrap(~HDONG_NM)
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-19-1.png)
+
+AMT\_IND 높은 순서대로 가회동, 부암동, 중계4동, 사직동, 중계본동,
+평창동, 무악동, 삼청동, 이화동, 상계8동 등등…
