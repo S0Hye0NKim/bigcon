@@ -692,7 +692,7 @@ gam_Dist$coefficients %>% tbl_df
 ```{r eval = FALSE}
 preds_gam_Dist <- predict.gam(gam_Dist, newdata = Real_Dist %>% na.omit(), type = "terms")
 
-preds_gam_Dist1 <- predict.gam(gam_Dist, newdata = Real_Dist %>% na.omit, type = "response")
+preds_gam_Dist1 <- mgcv::predict.gam(gam_Dist, newdata = Real_Dist %>% na.omit, type = "response")
 ```
 
 
