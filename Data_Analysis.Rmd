@@ -56,31 +56,6 @@ Wth_Day_HDONG <- Wth_Day_HDONG %>%
 에어코리아에서 제공한 서울권 미세먼지 주의보/경보 발령 내역
 
 
-```{r}
-Wth_Day_HDONG <- Wth_Day_HDONG %>%
-  mutate(Week_Day = strftime(Day, format = "%a") %>% as.character, 
-         Holiday = ifelse(Week_Day %in% c("Sun", "Sat"), 1, 0))
-
-Holiday_idx <- Wth_Day_HDONG$Day %in% Holiday$Date %>% which
-Wth_Day_HDONG[Holiday_idx, "Holiday"] <- 1
-
-Wth_Day_HDONG <- mutate(Wth_Day_HDONG, Holiday = factor(Holiday, levels = c(0, 1)))
-```
-
-
-```{r eval = FALSE}
-Wth_obs <- readRDS("Wth_obs.rds") %>%
-  mutate_at(.vars = c("pm10", "noise", "temp", "humi", "pm25"), as.numeric)
-
-Wth_obs_Modified <- Wth_obs %>%
-  mutate(pm10 = ifelse(pm10 == -999, NA, pm10), 
-         pm25 = ifelse(pm25 == -999, NA, pm25), 
-         noise = ifelse(noise %in% c(-9999, -999), NA, noise), 
-         temp = ifelse(temp %in% c(-9999, -999), NA, temp), 
-         humi = ifelse(humi %in% c(-9999, -999), NA, humi))
-```
-
-
 
 
 ```{r Code for Wth_Day_HDONG, eval = FALSE,}
@@ -105,6 +80,24 @@ Wth_Day_HDONG <- Wth_obs_HDONG %>%
   mutate(pm10_CTG = Classify_Dust_lev(avg_pm10, tiny = 10), 
          pm25_CTG = Classify_Dust_lev(avg_pm25, tiny = 25)) %>%
   left_join(Dust_Warning, by = c("Day" = "Date")) 
+
+Wth_Day_HDONG <- Wth_Day_HDONG %>%
+  mutate(Week_Day = strftime(Day, format = "%a") %>% as.character, 
+         Holiday = ifelse(Week_Day %in% c("Sat", "Sun"), 1, 0))
+
+Holiday_idx <- Wth_Day_HDONG$Day %in% Holiday$Date %>% which
+Wth_Day_HDONG[Holiday_idx, "Holiday"] <- 1
+
+Wth_Day_HDONG <- mutate(Wth_Day_HDONG, Holiday = factor(Holiday, levels = c(0, 1)))
+
+Dust_level  <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
+Wrn_level <- c("No_Wrn", "Warning", "Dust_Watch")
+
+Wth_Day_HDONG <- Wth_Day_HDONG %>%
+  mutate(pm10_CTG = factor(pm10_CTG, levels = Dust_level), 
+         pm25_CTG = factor(pm25_CTG, levels = Dust_level), 
+         pm10_Wrn = factor(pm10_Wrn, levels = Wrn_level), 
+         pm25_Wrn = factor(pm25_Wrn, levels = Wrn_level))
 ```
 
 wth_obs_HDONG에서 V10O1611289(천연동), V10O1611887(명동) HDONG_CD 없음.Wth_obs에서 제외하자. 
