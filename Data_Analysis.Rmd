@@ -35,21 +35,11 @@ SK_Time <- readRDS("SK_Time.rds")
 
 Holiday <- read_excel("Holiday_List.xlsx") %>%
   mutate(Date = as.character(Date))
-```
 
-
-
-
-```{r}
 Dust_level  <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
 Wrn_level <- c("No_Wrn", "Warning", "Dust_Watch")
-
-Wth_Day_HDONG <- Wth_Day_HDONG %>%
-  mutate(pm10_CTG = factor(pm10_CTG, levels = Dust_level), 
-         pm25_CTG = factor(pm25_CTG, levels = Dust_level), 
-         pm10_Wrn = factor(pm10_Wrn, levels = Wrn_level), 
-         pm25_Wrn = factor(pm25_Wrn, levels = Wrn_level))
 ```
+
 
 
 
@@ -800,7 +790,7 @@ Mtx_Card <- Card_Sum_CTG_HDONG %>%
 
 
 ```{r eval = FALSE}
-glm_Card_All <- glm(USE_CNT ~ ., family = "poisson", data = Card_Daily %>% select(-STD_DD, -AGE_CD, -USE_AMT))
+glm_Card_All <- glm(USE_CNT ~ MCT_CAT_CD + SEX_CD + AGE + HDONG_CD + avg_temp + avg_pm25 + pm10_CTG + pm25_CTG + pm25_Wrn + MCT_CAT_CD:HDONG_CD + pm25_CTG:HDONG_CD + pm25_CTG:MCT_CAT_CD, family = "poisson", data = Card_Daily)
 
 glm_Card_All_Ord <- glm(USE_CNT ~ ., family = "poisson", data = Card_Daily_Ord %>% select(-STD_DD, -AGE_CD, -USE_AMT))
 
@@ -818,9 +808,12 @@ AER의 dispersiontest 결과, true dispersion is greater than 1
 Negative Binomial glm을 사용하자.
 
 ```{r}
-glm_NB_Card <- MASS::glm.nb(USE_CNT ~ MCT_CAT_CD + SEX_CD + AGE + HDONG_CD + avg_temp + avg_pm25 + pm10_CTG + pm25_CTG + pm25_Wrn + MCT_CAT_CD:HDONG_CD + pm25_CTG:HDONG_CD + pm25_CTG:MCT_CAT_CD, data = Card_Daily)
+glm_NB_Card <- MASS::glm.nb(USE_CNT ~ MCT_CAT_CD + SEX_CD + AGE + HDONG_CD + avg_temp + avg_pm25 + pm10_CTG + pm25_CTG + pm25_Wrn, data = Card_Daily)
 
 ```
+
+AIC는 15343267
+
 
 NB가 AIC, BIC 더 낮다.
 AIC : 14473082
@@ -859,6 +852,10 @@ glm_Card_Grouped <- glm(USE_CNT ~ ., data = Card_Daily_MCT_Grouped %>% select(-S
 
 ```{r}
 summary(glm_NB_Card)
+```
+
+```{r}
+glm_NB_Card_ <- MASS::glm.nb(USE_CNT ~ MCT_CAT_CD + SEX_CD + AGE + HDONG_CD + avg_temp + avg_pm25 + pm10_CTG + pm25_CTG + pm25_CTG:MCT_CAT_CD, data = Card_Daily)
 ```
 
 
