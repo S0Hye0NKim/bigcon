@@ -36,21 +36,6 @@ Holiday <- read_excel("Holiday_List.xlsx") %>%
 
 Dust_level  <- c("Good", "Moderate", "Sens_Unhealthy", "Unhealthy", "Very Unhealthy", "Worst")
 Wrn_level <- c("No_Wrn", "Warning", "Dust_Watch")
-
-Wth_Day_HDONG <- Wth_Day_HDONG %>%
-  mutate(pm10_CTG = factor(pm10_CTG, levels = Dust_level), 
-         pm25_CTG = factor(pm25_CTG, levels = Dust_level), 
-         pm10_Wrn = factor(pm10_Wrn, levels = Wrn_level), 
-         pm25_Wrn = factor(pm25_Wrn, levels = Wrn_level))
-
-Wth_Day_HDONG <- Wth_Day_HDONG %>%
-  mutate(Week_Day = strftime(Day, format = "%a") %>% as.character, 
-         Holiday = ifelse(Week_Day %in% c("토", "일"), 1, 0))
-
-Holiday_idx <- Wth_Day_HDONG$Day %in% Holiday$Date %>% which
-Wth_Day_HDONG[Holiday_idx, "Holiday"] <- 1
-
-Wth_Day_HDONG <- mutate(Wth_Day_HDONG, Holiday = factor(Holiday, levels = c(0, 1)))
 ```
 
 1) SK\_Age
@@ -131,6 +116,33 @@ Real_Dist <- Dist %>%
          Category = factor(Category))
 ```
 
+4) SH Card
+----------
+
+``` r
+Rising <- c(25, 30, 35)
+Middle <- c(40, 45, 50, 55)
+Senior <- c(60, 65)
+
+Card <- Card %>%
+  mutate(AGE = case_when(AGE_CD == 20 ~ "Youth", 
+                         AGE_CD %in% Rising ~ "Rising", 
+                         AGE_CD %in% Middle ~ "Middle", 
+                         AGE_CD %in% Senior ~ "Senior"), 
+         AGE = factor(AGE, levels = c("Youth", "Rising", "Middle", "Senior"))) 
+
+Card_Modified <- Card %>%
+  separate(HDONG_CD, into = c("GU_CD", "DONG_CD"), sep = 2) %>%
+  mutate(GU_CD = paste0("11", GU_CD), 
+         DONG_CD = str_remove(DONG_CD, pattern = START %R% DGT)) %>%
+  unite(HDONG_CD, GU_CD, DONG_CD, sep = "") %>%
+  mutate(STD_DD = strptime(STD_DD, format = "%Y%m%d") %>% as.character())
+
+Card_Daily <- left_join(Card_Modified, Wth_Day_HDONG, by = c("HDONG_CD", "STD_DD" = "Day")) %>%
+  mutate(MCT_CAT_CD = factor(MCT_CAT_CD), 
+         HDONG_CD = factor(HDONG_CD))
+```
+
 1. Modelling
 ============
 
@@ -187,6 +199,15 @@ glm_Dist_Best <- glm(AMT_IND ~ Month + avg_temp + avg_pm10 + ADMD_CD +
 
 ``` r
 gam_Dist <- mgcv::gam(Real_Value ~ Month + ADMD_CD + Category + s(avg_temp) + s(avg_pm25) + s(avg_pm10) + pm10_CTG + pm25_CTG + pm10_Wrn + pm25_Wrn + ADMD_CD:Category + ADMD_CD:Month + Month:Category + Holiday + Holiday:Category + Holiday:pm25_CTG + Week_Day +  Category:pm10_CTG + Category:pm25_CTG + Holiday:Category:pm25_CTG, data = Real_Dist, select = TRUE)
+```
+
+4) SH Card
+----------
+
+``` r
+glm_NB_Card <- MASS::glm.nb(USE_CNT ~ MCT_CAT_CD + SEX_CD + AGE + HDONG_CD + avg_temp + avg_pm25 + 
+                              pm10_CTG + pm25_CTG + pm25_Wrn, 
+                            data = Card_Daily %>% select(-STD_DD, -AGE_CD, -USE_AMT, -pm10_Wrn, -avg_pm10))
 ```
 
 2. Inferences
@@ -699,7 +720,7 @@ tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6),
 plot(gam_Dist, pages = 1)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-14-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 ``` r
 summary_gam_Dist <- summary(gam_Dist)$p.table %>%
@@ -714,7 +735,7 @@ Ref_Data <- tibble(avg_pm10 = c(22, 40, 61, 86, 117, 207),
                    avg_pm25 = c(10, 20, 30, 43, 60, 115), 
                    Month = "Apr", ADMD_CD = "11110515", Category = "10", avg_temp = 30, 
                    pm10_CTG = "Good", pm25_CTG = "Good", pm10_Wrn = "No_Wrn", 
-                   pm25_Wrn = "No_Wrn", Week_Day = "금", Holiday = "0")
+                   pm25_Wrn = "No_Wrn", Week_Day = "Fri", Holiday = "0")
 
 preds_gam_Dist <- mgcv::predict.gam(gam_Dist, newdata = Ref_Data, type = "terms") %>% data.frame %>% 
   select(paste0("s.", c("avg_temp", "avg_pm25", "avg_pm10"), ".")) %>%
@@ -810,7 +831,7 @@ tibble(Category = rep(MCT_CAT_CD$MCT_CD, each = 6),
   facet_wrap(~Dust_Type)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-17-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
 ``` r
 Exclude_HDONG <- c("11110515", "11110540", "11110570", "11110680", "11110700", "11350570", "11350612", 
@@ -833,7 +854,7 @@ tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "De
   facet_wrap(~HDONG_NM, scales = "free")
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-18-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-20-1.png)
 
 ``` r
 tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"), 
@@ -852,7 +873,128 @@ tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "De
   facet_wrap(~HDONG_NM)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-19-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-21-1.png)
 
 AMT\_IND 높은 순서대로 가회동, 부암동, 중계4동, 사직동, 중계본동,
 평창동, 무악동, 삼청동, 이화동, 상계8동 등등…
+
+4) SH Card
+----------
+
+``` r
+summary_glm_NB_Card <- summary(glm_NB_Card)$coefficients %>% data.frame() %>%
+  rownames_to_column(var = "Variable") %>%
+  tbl_df %>%
+  `names<-`(value = c("Variable", "Estimate", "Std_Er", "t_val", "p_val"))
+```
+
+``` r
+summary_glm_NB_Card %>%
+  filter(p_val <= 0.05, 
+         Variable %>% str_detect("pm10_CTG")) %>%
+  mutate(pm10_CTG = Variable %>% str_remove("pm10_CTG")) %>%
+  select(pm10_CTG, val_pm10 = Estimate) %>%
+  right_join(tibble(pm10_CTG = Dust_level), by = "pm10_CTG") %>%
+  mutate(val_pm10 = val_pm10 %>% replace_na(0), 
+         Type = ifelse(val_pm10 >= 0, "+", "-")) %>%
+  ggplot() +
+  geom_bar(aes(x = pm10_CTG, y = val_pm10, fill = Type), stat = "identity", alpha = 0.7)
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-23-1.png)
+
+glm\_NB\_Card는 avg\_pm10 없음.
+
+``` r
+glm_NB_Card_pm25_coef <- summary_glm_NB_Card %>% filter(Variable == "avg_pm25") %>% .$Estimate
+
+summary_glm_NB_Card %>%
+  filter(p_val <= 0.05, 
+         Variable %>% str_detect("pm25_CTG")) %>%
+  mutate(pm25_CTG = Variable %>% str_remove("pm25_CTG"), 
+         Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+         Estimate = Estimate + glm_NB_Card_pm25_coef * Correction) %>%
+  select(pm25_CTG, Estimate) %>%
+  right_join(tibble(pm25_CTG = Dust_level), by = "pm25_CTG") %>%
+  mutate(Estimate = Estimate %>% replace_na(0)) %>%
+  ggplot() +
+  geom_bar(aes(x = pm25_CTG, y = Estimate), stat = "identity", alpha = 0.7)
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-24-1.png)
+
+``` r
+summary_glm_NB_Card %>%
+  filter(p_val <= 0.05,
+         Variable %>% str_detect("MCT_CAT_CD")) %>%
+  mutate(Category = Variable %>% str_remove("MCT_CAT_CD")) %>%
+  select(Category, val_CTG = Estimate) %>%
+  right_join(MCT_CAT_CD, by = c("Category" = "MCT_CD")) %>%
+  mutate(val_CTG = val_CTG %>% replace_na(0), 
+         Type = ifelse(val_CTG >= 0, "+", "-")) %>%
+  ggplot() +
+  geom_bar(aes(x = MCT_NM, y = val_CTG, fill = Type), stat = "identity", alpha = 0.7) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-25-1.png)
+
+``` r
+summary_glm_NB_Card %>%
+  filter(p_val <= 0.05, 
+         Variable %>% str_detect("AGE")) %>%
+  mutate(AGE = Variable %>% str_remove("AGE")) %>%
+  select(AGE, val_AGE = Estimate) %>%
+  right_join(tibble(AGE = c("Youth", "Rising", "Middle", "Senior")), by = "AGE") %>%
+  mutate(val_AGE = val_AGE %>% replace_na(0), 
+         Type = ifelse(val_AGE >= 0, "+", "-"), 
+         AGE = AGE %>% factor(levels = c("Youth", "Rising", "Middle", "Senior"))) %>%
+  ggplot() +
+  geom_bar(aes(x = AGE, y = val_AGE, fill = Type), stat = "identity", alpha = 0.7)
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-26-1.png)
+
+``` r
+summary_glm_NB_Card %>%
+  filter(p_val <= 0.05, 
+         Variable %>% str_detect("HDONG_CD")) %>%
+  mutate(HDONG_CD = Variable %>% str_remove("HDONG_CD")) %>%
+  select(HDONG_CD, val_HDONG = Estimate) %>%
+  right_join(HDONG_map, by = "HDONG_CD") %>%
+  mutate(val_HDONG = val_HDONG %>% replace_na(0)) %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, fill = val_HDONG, group = group), color = "black") +
+  scale_fill_gradient2(low = "red", high = "blue")
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-27-1.png)
+
+``` r
+glm_NB_Card_Hol_coef <- summary_glm_NB_Card %>% filter(Variable == "Holiday1") %>% .$Estimate
+Holiday <- c("Sat", "Sun")
+
+summary_glm_NB_Card %>%
+  filter(p_val <= 0.05, 
+         Variable %>% str_detect("Week_Day")) %>%
+  mutate(Week_Day = Variable %>% str_remove("Week_Day")) %>%
+  right_join(tibble(Week_Day = Week_Day_lev), by = "Week_Day") %>%
+  select(Week_Day, Estimate) %>%
+  mutate(Estimate = Estimate %>% replace_na(0), 
+         Type = ifelse(Estimate >= 0, "+", "-"), 
+         Estimate = ifelse(Week_Day %in% Holiday, Estimate + glm_NB_Card_Hol_coef, Estimate), 
+         Week_Day = Week_Day %>% factor(levels = Week_Day_lev)) %>%
+  ggplot() +
+  geom_bar(aes(x = Week_Day, y = Estimate, fill = Type), stat = "identity", alpha = 0.7)
+```
+
+    ## Warning: Removed 2 rows containing missing values (position_stack).
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-28-1.png)
+
+Sat, Sun에는 Holiday Effect 추가.
