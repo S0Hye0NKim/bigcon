@@ -808,7 +808,9 @@ AER의 dispersiontest 결과, true dispersion is greater than 1
 Negative Binomial glm을 사용하자.
 
 ```{r}
-glm_NB_Card <- MASS::glm.nb(USE_CNT ~ MCT_CAT_CD + SEX_CD + AGE + HDONG_CD + avg_temp + avg_pm25 + pm10_CTG + pm25_CTG + pm25_Wrn, data = Card_Daily)
+glm_NB_Card <- MASS::glm.nb(USE_CNT ~ MCT_CAT_CD + SEX_CD + AGE + HDONG_CD + avg_temp + avg_pm25 + 
+                              pm10_CTG + pm25_CTG + pm25_Wrn + Week_Day + Holiday, 
+                            data = Card_Daily)
 
 ```
 

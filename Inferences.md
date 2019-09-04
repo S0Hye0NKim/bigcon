@@ -206,8 +206,8 @@ gam_Dist <- mgcv::gam(Real_Value ~ Month + ADMD_CD + Category + s(avg_temp) + s(
 
 ``` r
 glm_NB_Card <- MASS::glm.nb(USE_CNT ~ MCT_CAT_CD + SEX_CD + AGE + HDONG_CD + avg_temp + avg_pm25 + 
-                              pm10_CTG + pm25_CTG + pm25_Wrn, 
-                            data = Card_Daily %>% select(-STD_DD, -AGE_CD, -USE_AMT, -pm10_Wrn, -avg_pm10))
+                              pm10_CTG + pm25_CTG + pm25_Wrn + Week_Day + Holiday, 
+                            data = Card_Daily)
 ```
 
 2. Inferences
@@ -955,7 +955,7 @@ summary_glm_NB_Card %>%
          Type = ifelse(val_AGE >= 0, "+", "-"), 
          AGE = AGE %>% factor(levels = c("Youth", "Rising", "Middle", "Senior"))) %>%
   ggplot() +
-  geom_bar(aes(x = AGE, y = val_AGE, fill = Type), stat = "identity", alpha = 0.7)
+  geom_bar(aes(x = AGE, y = val_AGE), stat = "identity", alpha = 0.7)
 ```
 
 ![](Inferences_files/figure-markdown_github/unnamed-chunk-26-1.png)
@@ -986,14 +986,12 @@ summary_glm_NB_Card %>%
   right_join(tibble(Week_Day = Week_Day_lev), by = "Week_Day") %>%
   select(Week_Day, Estimate) %>%
   mutate(Estimate = Estimate %>% replace_na(0), 
-         Type = ifelse(Estimate >= 0, "+", "-"), 
          Estimate = ifelse(Week_Day %in% Holiday, Estimate + glm_NB_Card_Hol_coef, Estimate), 
-         Week_Day = Week_Day %>% factor(levels = Week_Day_lev)) %>%
+         Week_Day = Week_Day %>% factor(levels = Week_Day_lev), 
+         Type = ifelse(Estimate >= 0, "+", "-")) %>%
   ggplot() +
   geom_bar(aes(x = Week_Day, y = Estimate, fill = Type), stat = "identity", alpha = 0.7)
 ```
-
-    ## Warning: Removed 2 rows containing missing values (position_stack).
 
 ![](Inferences_files/figure-markdown_github/unnamed-chunk-28-1.png)
 
