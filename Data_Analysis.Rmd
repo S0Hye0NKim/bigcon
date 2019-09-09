@@ -164,6 +164,12 @@ glm_SK_Age_Gamma_Hol_HDCTG <- glm(Avg_pop ~ HDONG_CD + Sex + Age + AGE_CTG + avg
 4437854
 4440048
 
+```{r}
+glm_SK_Age_Gamma_HDONG <- glm(Avg_pop ~ HDONG_CD + Sex + Age + AGE_CTG + avg_temp + avg_pm10 + avg_pm25 + pm10_CTG + pm25_CTG + Week_Day + Holiday + HDONG_CD:pm25_CTG + HDONG_CD:AGE_CTG + HDONG_CD:Holiday + HDONG_CD:Sex + pm25_CTG:AGE_CTG, 
+                         data = SK_Age_HDONG_Modified %>% filter(Non_zero == 1) %>%
+                          select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), 
+                         family = Gamma(link = "log"))
+```
 
 HDONG_CD와 pm25_CTG interaction 선택.
 
@@ -325,6 +331,16 @@ glm_SK_Time_Gamma_Hol <- glm(Avg_pop ~ HDONG_CD + Time + Week_Day + avg_temp + a
 ```
 
 3678643
+
+```{r}
+glm_SK_Time_Gamma_HDONG <- glm(Avg_pop ~ HDONG_CD + Time + Week_Day + avg_temp + avg_pm10 + avg_pm25 +
+                                       pm10_CTG + pm25_CTG + pm10_Wrn + Holiday + Time_Group + 
+                           HDONG_CD:Week_Day + HDONG_CD:pm25_CTG + HDONG_CD:Holiday +
+                           HDONG_CD:Time_Group + pm25_CTG:Time_Group,
+                                     data = SK_Time_HDONG_Modified %>% filter(Non_zero == 1), 
+                                     family = Gamma(link = "log"))
+```
+
 
 Gamma는 Interactino 모델이 더 좋다. 
 
