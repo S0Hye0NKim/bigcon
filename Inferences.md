@@ -30,6 +30,8 @@ Dist <- readRDS("Dist.rds")
 SK_Age <- readRDS("SK_Age.rds")
 SK_Time <- readRDS("SK_Time.rds")
 MCT_CAT_CD <- readRDS("MCT_CAT_CD.rds")
+Dist_Category <- readRDS("Dist_Category.rds") %>%
+  mutate(CTG_CD = as.character(CTG_CD))
 
 Holiday <- read_excel("Holiday_List.xlsx") %>%
   mutate(Date = as.character(Date))
@@ -370,6 +372,7 @@ summary_SK_Time <- summary(glm_SK_Time_Gamma_Hol_HD_CTG)$coefficients %>% data.f
 ``` r
 Week_Day_lev <- c("Fri", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu")
 SK_Time_pm25_coef <- glm_SK_Time_Gamma_Hol_HD_CTG$coefficients["avg_pm25"]
+SK_Time_Hol_coef <- glm_SK_Time_Gamma_Hol_HD_CTG$coefficients["Holiday1"]
 
 SK_Time_coef <- tibble(Week_Day = rep(Week_Day_lev, each = 12), 
        pm25_CTG = rep(Dust_level,7) %>% rep(each = 2), 
@@ -394,7 +397,8 @@ SK_Time_coef %>%
     Estimate = val_Week + val_Dust + val_Hol + val_Week_Hol + val_Week_pm25 + val_pm25_Hol + 
       val_inter + SK_Time_pm25_coef * Correction) %>%
   select(Week_Day, pm25_CTG, Holiday, Estimate) %>%
-  filter(!(Holiday == "1"& Week_Day != "Sat"& Week_Day != "Sun")) %>%
+  filter(!(Holiday == "1" & Week_Day != "Sat"& Week_Day != "Sun"), 
+         !(Holiday == "0" & Week_Day %in% c("Sat", "Sun"))) %>%
   ggplot() +
   geom_line(aes(x = pm25_CTG, y = Estimate, group = Week_Day, color = Week_Day)) +
   facet_wrap(~Holiday) +
@@ -744,16 +748,13 @@ preds_gam_Dist <- mgcv::predict.gam(gam_Dist, newdata = Ref_Data, type = "terms"
 ```
 
 ``` r
-Target_MCT_CTG <- c(20, 30, 40, 50, 60, 70, 80)
-
-tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 23), 
-       Category = rep(MCT_CAT_CD$MCT_CD, 36), 
-       Category_NM = rep(MCT_CAT_CD$MCT_NM, 36)) %>%
+tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 8), 
+       Category = rep(Dist_Category$CTG_CD, 36) %>% as.character, 
+       Category_NM = rep(Dist_Category$CTG_NM, 36)) %>%
   left_join(gam_Dist_Main_Eff_HDONG, by = "HDONG_CD") %>%
   left_join(gam_Dist_Main_Eff_CTG, by = "Category") %>%
   left_join(gam_Dist_HDONG_CTG, by = c("HDONG_CD", "Category")) %>%
   left_join(HDong_CD, by = "HDONG_CD") %>% 
-  filter(Category %in% Target_MCT_CTG) %>%
   mutate_all(replace_na, 0) %>%
   mutate(Estimate = val_CTG + val_HDONG_CTG) %>%
   left_join(HDONG_map, by = "HDONG_CD") %>%
@@ -769,16 +770,16 @@ tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 23),
 유의미
 
 ``` r
-tibble(Category = rep(MCT_CAT_CD$MCT_CD, each = 2), 
-       Holiday = rep(c(0, 1), 23) %>% as.character) %>%
+tibble(Category = rep(Dist_Category$CTG_CD, each = 2) %>% as.character, 
+       Holiday = rep(c(0, 1), 8) %>% as.character) %>%
   left_join(gam_Dist_Main_Eff_CTG, by = "Category") %>%
   left_join(gam_Dist_Main_Eff_Hol, by = "Holiday") %>%
   left_join(gam_Dist_CTG_Hol, by = c("Category", "Holiday")) %>%
-  left_join(MCT_CAT_CD, by = c("Category" = "MCT_CD")) %>% 
+  left_join(Dist_Category, by = c("Category" = "CTG_CD")) %>% 
   mutate_all(replace_na, 0) %>%
   mutate(Estimate = val_CTG + val_Hol + val_CTG_Hol) %>%
   ggplot() +
-  geom_bar(aes(x = MCT_NM, y = Estimate, fill = Holiday), stat = "identity", position = "dodge",
+  geom_bar(aes(x = CTG_NM, y = Estimate, fill = Holiday), stat = "identity", position = "dodge",
            alpha = 0.5) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
@@ -786,9 +787,9 @@ tibble(Category = rep(MCT_CAT_CD$MCT_CD, each = 2),
 ![](Inferences_files/figure-markdown_github/Holiday%20and%20Category-1.png)
 
 ``` r
-tibble(Category = rep(MCT_CAT_CD$MCT_CD, 12), 
-       pm25_CTG = rep(Dust_level, 23) %>% rep(each = 2), 
-       Holiday = rep(c(0, 1), 138) %>% as.character) %>%
+tibble(Category = rep(Dist_Category$CTG_CD, each = 12), 
+       pm25_CTG = rep(Dust_level, 8) %>% rep(each = 2), 
+       Holiday = rep(c(0, 1), 48) %>% as.character) %>%
   left_join(gam_Dist_Main_Eff_CTG, by = "Category") %>%
   left_join(gam_Dist_Main_Eff_pm25, by = "pm25_CTG") %>%
   left_join(gam_Dist_Main_Eff_Hol, by = "Holiday") %>%
@@ -798,11 +799,11 @@ tibble(Category = rep(MCT_CAT_CD$MCT_CD, 12),
   left_join(gam_Dist_3_inter, by = c("Category", "pm25_CTG", "Holiday")) %>%
   mutate_all(replace_na, 0) %>%
   left_join(preds_gam_Dist, by = c("pm25_CTG" = "Dust_level")) %>%
-  left_join(MCT_CAT_CD, by = c("Category" = "MCT_CD")) %>% 
+  left_join(Dist_Category, by = c("Category" = "CTG_CD")) %>% 
   mutate(Estimate = val_CTG + val_pm25 + val_Hol + val_CTG_pm25 + val_CTG_Hol + val_pm25_CTG_Hol +
            val_3_inter + avg_pm10) %>%
   ggplot() +
-  geom_line(aes(x = pm25_CTG, y = Estimate, group = MCT_NM, color = MCT_NM)) +
+  geom_line(aes(x = pm25_CTG, y = Estimate, group = CTG_NM, color = CTG_NM)) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   facet_wrap(~Holiday)
 ```
@@ -810,8 +811,8 @@ tibble(Category = rep(MCT_CAT_CD$MCT_CD, 12),
 ![](Inferences_files/figure-markdown_github/pm25_CTG%20and%20Category%20and%20Holiday-1.png)
 
 ``` r
-tibble(Category = rep(MCT_CAT_CD$MCT_CD, each = 6), 
-       Dust = rep(Dust_level, 23)) %>%
+tibble(Category = rep(Dist_Category$CTG_CD, each = 6), 
+       Dust = rep(Dust_level, 8)) %>%
   left_join(gam_Dist_Main_Eff_pm10, by = c("Dust" = "pm10_CTG")) %>%
   left_join(gam_Dist_Main_Eff_pm25, by = c("Dust" = "pm25_CTG")) %>%
   left_join(gam_Dist_Main_Eff_CTG, by = "Category") %>%
@@ -823,10 +824,10 @@ tibble(Category = rep(MCT_CAT_CD$MCT_CD, each = 6),
          Estimate_pm25 = val_pm25 + val_CTG + val_CTG_pm25 + avg_pm25) %>%
   select(Category, Dust, Estimate_pm10, Estimate_pm25) %>%
   gather(key = "Dust_Type", value = "Estimate", -Category, -Dust) %>%
-  left_join(MCT_CAT_CD, by = c("Category" = "MCT_CD")) %>% 
+  left_join(Dist_Category, by = c("Category" = "CTG_CD")) %>% 
   mutate(Dust_Type = Dust_Type %>% str_remove("Estimate_")) %>%
   ggplot() +
-  geom_line(aes(x = Dust, y = Estimate, color = MCT_NM, group = MCT_NM)) +
+  geom_line(aes(x = Dust, y = Estimate, color = CTG_NM, group = CTG_NM)) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   facet_wrap(~Dust_Type)
 ```
