@@ -315,9 +315,11 @@ tibble(Sex = rep(c("MAN", "WMAN"), each = 6),
                                 pm25_CTG == "Unhealthy" ~ 43, 
                                 pm25_CTG == "Very Unhealthy" ~ 60, 
                                 pm25_CTG == "Worst" ~ 115), 
-         Estimate = val_Dust + val_Sex + SK_Age_pm25_coef * Correction) %>%
+         Estimate = val_Sex + val_Dust +  SK_Age_pm25_coef * Correction, 
+         Est_point = SK_Age_pm25_coef * Correction + val_Sex) %>%
   ggplot() +
-  geom_line(aes(x = pm25_CTG, y = Estimate, group = Sex, color = Sex))
+  geom_line(aes(x = pm25_CTG, y = Estimate, group = Sex, color = Sex)) +
+  geom_point(aes(x = pm25_CTG, y = Est_point, color = Sex))
 ```
 
 ![](Inferences_files/figure-markdown_github/pm25_CTG%20and%20Sex-1.png)
@@ -352,9 +354,33 @@ tibble(AGE_CTG = rep(c("Youth", "Rising", "Middle", "Senior"), 6),
                                 pm25_CTG == "Unhealthy" ~ 43, 
                                 pm25_CTG == "Very Unhealthy" ~ 60, 
                                 pm25_CTG == "Worst" ~ 115), 
-         Estimate = val_Dust + val_Age_Dust + SK_Age_pm25_coef * Correction) %>%
+         Estimate = val_AGE + val_Dust + val_Age_Dust + SK_Age_pm25_coef * Correction, 
+         Est_point = val_AGE + SK_Age_pm25_coef * Correction) %>%
   ggplot() +
-  geom_line(aes(x = pm25_CTG, y = Estimate, group = AGE_CTG, color = AGE_CTG)) 
+  geom_line(aes(x = pm25_CTG, y = Estimate, group = AGE_CTG, color = AGE_CTG)) +
+  geom_point(aes(x = pm25_CTG, y = Est_point, color = AGE_CTG))
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-14-1.png)
+
+``` r
+tibble(AGE_CTG = rep(c("Youth", "Rising", "Middle", "Senior"), 6), 
+       pm25_CTG = rep(Dust_level, each = 4)) %>%
+  left_join(SK_Age_Dust_Age, by = c("AGE_CTG", "pm25_CTG")) %>%
+  left_join(SK_Age_Main_Eff_Dust, by = "pm25_CTG", suffix = c("_Inter", "_Dust")) %>%
+  left_join(SK_Age_Main_Eff_AGE_CTG, by = "AGE_CTG") %>%
+  mutate_all(replace_na, replace = 0) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+         Estimate = val_Dust + val_Age_Dust + SK_Age_pm25_coef * Correction, 
+         Est_point = SK_Age_pm25_coef * Correction) %>%
+  ggplot() +
+  geom_line(aes(x = pm25_CTG, y = Estimate, group = AGE_CTG, color = AGE_CTG)) +
+  geom_point(aes(x = pm25_CTG, y = Est_point))
 ```
 
 ![](Inferences_files/figure-markdown_github/pm25_CTG%20and%20AGE_CTG-1.png)
@@ -395,12 +421,14 @@ SK_Time_coef %>%
                                 pm25_CTG == "Very Unhealthy" ~ 60, 
                                 pm25_CTG == "Worst" ~ 115), 
     Estimate = val_Week + val_Dust + val_Hol + val_Week_Hol + val_Week_pm25 + val_pm25_Hol + 
-      val_inter + SK_Time_pm25_coef * Correction) %>%
-  select(Week_Day, pm25_CTG, Holiday, Estimate) %>%
+      val_inter + SK_Time_pm25_coef * Correction, 
+    Est_point = SK_Time_pm25_coef * Correction + val_Week + val_Hol) %>%
+  select(Week_Day, pm25_CTG, Holiday, Estimate, Est_point) %>%
   filter(!(Holiday == "1" & Week_Day != "Sat"& Week_Day != "Sun"), 
          !(Holiday == "0" & Week_Day %in% c("Sat", "Sun"))) %>%
   ggplot() +
   geom_line(aes(x = pm25_CTG, y = Estimate, group = Week_Day, color = Week_Day)) +
+  geom_point(aes(x = pm25_CTG, y = Est_point, color = Week_Day)) +
   facet_wrap(~Holiday) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
@@ -451,13 +479,38 @@ tibble(Time_Group = rep(c("Afternoon", "Dawn", "Evening", "Rush_Hour"), each = 6
                                 pm25_CTG == "Unhealthy" ~ 43, 
                                 pm25_CTG == "Very Unhealthy" ~ 60, 
                                 pm25_CTG == "Worst" ~ 115), 
-    Estimate = val_Dust + val_Time_pm25 + SK_Time_pm25_coef * Correction)  %>%
-  select(Time_Group, pm25_CTG, Estimate) %>%
+    Estimate = val_Time_GR + val_Dust + val_Time_pm25 + SK_Time_pm25_coef * Correction, 
+    Est_point = val_Time_GR + SK_Time_pm25_coef * Correction)  %>%
+  select(Time_Group, pm25_CTG, Estimate, Est_point) %>%
   ggplot() +
-  geom_line(aes(x = pm25_CTG, y = Estimate, group = Time_Group, color = Time_Group))
+  geom_line(aes(x = pm25_CTG, y = Estimate, group = Time_Group, color = Time_Group)) +
+  geom_point(aes(x = pm25_CTG, y = Est_point, color = Time_Group))
 ```
 
 ![](Inferences_files/figure-markdown_github/pm25_CTG%20and%20Time_Group-1.png)
+
+``` r
+tibble(Time_Group = rep(c("Afternoon", "Dawn", "Evening", "Rush_Hour"), each = 6), 
+       pm25_CTG = rep(Dust_level, 4)) %>%
+  left_join(SK_Time_Main_Eff_Time_Gr, by = "Time_Group") %>%
+  left_join(SK_Time_Main_Eff_Dust, by = "pm25_CTG") %>%
+  left_join(SK_Time_Gr_pm25, by = c("Time_Group", "pm25_CTG")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Correction = case_when(pm25_CTG == "Good" ~ 10, 
+                                pm25_CTG == "Moderate" ~ 20, 
+                                pm25_CTG == "Sens_Unhealthy" ~ 30, 
+                                pm25_CTG == "Unhealthy" ~ 43, 
+                                pm25_CTG == "Very Unhealthy" ~ 60, 
+                                pm25_CTG == "Worst" ~ 115), 
+    Estimate = val_Dust + val_Time_pm25 + SK_Time_pm25_coef * Correction, 
+    Est_point = SK_Time_pm25_coef * Correction)  %>%
+  select(Time_Group, pm25_CTG, Estimate, Est_point) %>%
+  ggplot() +
+  geom_line(aes(x = pm25_CTG, y = Estimate, group = Time_Group, color = Time_Group)) +
+  geom_point(aes(x = pm25_CTG, y = Est_point))
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 ``` r
 tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6), 
@@ -576,9 +629,11 @@ tibble(pm25_Wrn = rep(Wrn_level, each = 2),
          Correction = case_when(pm25_Wrn == "No_Wrn" ~ 0,
                                 pm25_Wrn == "Warning" ~ 75, 
                                 pm25_Wrn == "Dust_Watch" ~ 150), 
-         Estimate = val_Wrn + val_Hol + val_Wrn_Hol + SK_Time_pm25_coef * Correction) %>%
+         Estimate = val_Wrn + val_Hol + val_Wrn_Hol + SK_Time_pm25_coef * Correction, 
+         Est_point = val_Hol + SK_Time_pm25_coef * Correction) %>%
   ggplot() +
-  geom_line(aes(x = pm25_Wrn, y = Estimate, group = Holiday, color = Holiday))
+  geom_line(aes(x = pm25_Wrn, y = Estimate, group = Holiday, color = Holiday)) +
+  geom_point(aes(x = pm25_Wrn, y = Est_point, color = Holiday))
 ```
 
 ![](Inferences_files/figure-markdown_github/Holiday%20and%20pm25_Wrn-1.png)
@@ -629,9 +684,11 @@ tibble(pm10_CTG = rep(Dust_level, each = 2),
                                 pm10_CTG == "Unhealthy" ~ 86, 
                                 pm10_CTG == "Very Unhealthy" ~ 117, 
                                 pm10_CTG == "Worst" ~ 207), 
-         Estimate = val_Hol + val_pm10_Hol + glm_Dist_pm10_coef * Correction) %>%
+         Estimate = val_Hol + val_pm10_Hol + glm_Dist_pm10_coef * Correction, 
+         Est_point = val_Hol + glm_Dist_pm10_coef * Correction) %>%
   ggplot() +
-  geom_line(aes(x = pm10_CTG, y = Estimate, group = Holiday, color = Holiday))
+  geom_line(aes(x = pm10_CTG, y = Estimate, group = Holiday, color = Holiday)) +
+  geom_point(aes(x = pm10_CTG, y = Est_point, color = Holiday))
 ```
 
 ![](Inferences_files/figure-markdown_github/pm10_CTG%20and%20Holiday%20(Dist)-1.png)
@@ -646,9 +703,11 @@ tibble(pm10_Wrn = rep(Wrn_level, each = 2),
          Correction = case_when(pm10_Wrn == "No_Wrn" ~ 0, 
                                 pm10_Wrn == "Warning" ~ 150, 
                                 pm10_Wrn == "Dust_Watch" ~ 300), 
-         Estimate = val_Hol + val_pm10_Wrn_Hol + glm_Dist_pm10_coef * Correction) %>%
+         Estimate = val_Hol + val_pm10_Wrn_Hol + glm_Dist_pm10_coef * Correction, 
+         Est_point = val_Hol + glm_Dist_pm10_coef * Correction) %>%
   ggplot() +
-  geom_line(aes(x = pm10_Wrn, y = Estimate, group = Holiday, color = Holiday))
+  geom_line(aes(x = pm10_Wrn, y = Estimate, group = Holiday, color = Holiday)) +
+  geom_point(aes(x = pm10_Wrn, y = Est_point, color = Holiday))
 ```
 
 ![](Inferences_files/figure-markdown_github/pm10_Wrn%20and%20Holiday-1.png)
@@ -666,12 +725,36 @@ tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "De
                                 pm10_CTG == "Unhealthy" ~ 86, 
                                 pm10_CTG == "Very Unhealthy" ~ 117, 
                                 pm10_CTG == "Worst" ~ 207), 
-         Estimate = val_Mon + val_Mon_pm10 + glm_Dist_pm10_coef * Correction) %>%
+         Estimate = val_Mon + val_Mon_pm10 + glm_Dist_pm10_coef * Correction, 
+         Est_point = val_Mon + glm_Dist_pm10_coef * Correction) %>%
   ggplot() +
-  geom_line(aes(x = pm10_CTG, y = Estimate, group = Month, color = Month))
+  geom_line(aes(x = pm10_CTG, y = Estimate, group = Month, color = Month)) +
+  geom_point(aes(x = pm10_CTG, y = Est_point, color = Month))
 ```
 
 ![](Inferences_files/figure-markdown_github/pm10_CTG%20and%20Month-1.png)
+
+``` r
+tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"),
+                   each = 6), 
+       pm10_CTG = rep(Dust_level, 12)) %>%
+  left_join(glm_Dist_Main_Eff_Mon, by = "Month") %>%
+  left_join(glm_Dist_Mon_pm10_CTG, by = c("Month", "pm10_CTG")) %>%
+  mutate_all(replace_na, 0) %>%
+  mutate(Correction = case_when(pm10_CTG == "Good" ~ 22, 
+                                pm10_CTG == "Moderate" ~ 40, 
+                                pm10_CTG == "Sens_Unhealthy" ~ 61, 
+                                pm10_CTG == "Unhealthy" ~ 86, 
+                                pm10_CTG == "Very Unhealthy" ~ 117, 
+                                pm10_CTG == "Worst" ~ 207), 
+         Estimate = val_Mon_pm10 + glm_Dist_pm10_coef * Correction, 
+         Est_point = glm_Dist_pm10_coef * Correction) %>%
+  ggplot() +
+  geom_line(aes(x = pm10_CTG, y = Estimate, group = Month, color = Month)) +
+  geom_point(aes(x = pm10_CTG, y = Est_point))
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-18-1.png)
 
 ``` r
 tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6), 
@@ -724,7 +807,7 @@ tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6),
 plot(gam_Dist, pages = 1)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
 ``` r
 summary_gam_Dist <- summary(gam_Dist)$p.table %>%
@@ -801,9 +884,11 @@ tibble(Category = rep(Dist_Category$CTG_CD, each = 12),
   left_join(preds_gam_Dist, by = c("pm25_CTG" = "Dust_level")) %>%
   left_join(Dist_Category, by = c("Category" = "CTG_CD")) %>% 
   mutate(Estimate = val_CTG + val_pm25 + val_Hol + val_CTG_pm25 + val_CTG_Hol + val_pm25_CTG_Hol +
-           val_3_inter + avg_pm10) %>%
+           val_3_inter + avg_pm25, 
+         Est_point = val_CTG + avg_pm25 + val_Hol) %>%
   ggplot() +
   geom_line(aes(x = pm25_CTG, y = Estimate, group = CTG_NM, color = CTG_NM)) +
+  geom_point(aes(x = pm25_CTG, y = Est_point, color = CTG_NM)) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   facet_wrap(~Holiday)
 ```
@@ -832,7 +917,7 @@ tibble(Category = rep(Dist_Category$CTG_CD, each = 6),
   facet_wrap(~Dust_Type)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-19-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-22-1.png)
 
 ``` r
 Exclude_HDONG <- c("11110515", "11110540", "11110570", "11110680", "11110700", "11350570", "11350612", 
@@ -855,7 +940,7 @@ tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "De
   facet_wrap(~HDONG_NM, scales = "free")
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-20-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-23-1.png)
 
 ``` r
 tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"), 
@@ -874,7 +959,7 @@ tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "De
   facet_wrap(~HDONG_NM)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-21-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-24-1.png)
 
 AMT\_IND 높은 순서대로 가회동, 부암동, 중계4동, 사직동, 중계본동,
 평창동, 무악동, 삼청동, 이화동, 상계8동 등등…
@@ -902,7 +987,7 @@ summary_glm_NB_Card %>%
   geom_bar(aes(x = pm10_CTG, y = val_pm10, fill = Type), stat = "identity", alpha = 0.7)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-23-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-26-1.png)
 
 glm\_NB\_Card는 avg\_pm10 없음.
 
@@ -919,15 +1004,19 @@ summary_glm_NB_Card %>%
                                 pm25_CTG == "Unhealthy" ~ 43, 
                                 pm25_CTG == "Very Unhealthy" ~ 60, 
                                 pm25_CTG == "Worst" ~ 115), 
-         Estimate = Estimate + glm_NB_Card_pm25_coef * Correction) %>%
-  select(pm25_CTG, Estimate) %>%
+         Estimate = Estimate + glm_NB_Card_pm25_coef * Correction, 
+         Est_point = glm_NB_Card_pm25_coef * Correction) %>%
+  select(pm25_CTG, Estimate, Est_point) %>%
   right_join(tibble(pm25_CTG = Dust_level), by = "pm25_CTG") %>%
   mutate(Estimate = Estimate %>% replace_na(0)) %>%
   ggplot() +
-  geom_bar(aes(x = pm25_CTG, y = Estimate), stat = "identity", alpha = 0.7)
+  geom_bar(aes(x = pm25_CTG, y = Estimate), stat = "identity", alpha = 0.7) +
+  geom_point(aes(x = pm25_CTG, y = Est_point))
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-24-1.png)
+    ## Warning: Removed 3 rows containing missing values (geom_point).
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-27-1.png)
 
 ``` r
 summary_glm_NB_Card %>%
@@ -943,7 +1032,7 @@ summary_glm_NB_Card %>%
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-25-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-28-1.png)
 
 ``` r
 summary_glm_NB_Card %>%
@@ -959,7 +1048,7 @@ summary_glm_NB_Card %>%
   geom_bar(aes(x = AGE, y = val_AGE), stat = "identity", alpha = 0.7)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-26-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-29-1.png)
 
 ``` r
 summary_glm_NB_Card %>%
@@ -974,7 +1063,7 @@ summary_glm_NB_Card %>%
   scale_fill_gradient2(low = "red", high = "blue")
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-27-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-30-1.png)
 
 ``` r
 glm_NB_Card_Hol_coef <- summary_glm_NB_Card %>% filter(Variable == "Holiday1") %>% .$Estimate
@@ -994,6 +1083,6 @@ summary_glm_NB_Card %>%
   geom_bar(aes(x = Week_Day, y = Estimate, fill = Type), stat = "identity", alpha = 0.7)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-28-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-31-1.png)
 
 Sat, Sun에는 Holiday Effect 추가.
