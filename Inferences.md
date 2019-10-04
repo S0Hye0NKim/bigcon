@@ -89,8 +89,8 @@ HDONG_map %>%
     ##  Max.   :965812   Max.   :1966369
 
 The latitude of South korea is 33 to 43, and longtitude is 124 to 132.
-But in the shape file, latitude is 951368 up to 965812, and the
-longtitude is 1951963 up to 1966369.
+But in this HDONG_map shape file, longtitude is 951368 up to 965812, and the
+latitude is 1951963 up to 1966369.
 
 I think it is the reason why coor\_map does not work in my ggmap.
 
