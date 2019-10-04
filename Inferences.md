@@ -42,6 +42,58 @@ Age_level <- c("Youth", "Rising", "Middle", "Senior")
 Week_Day_lev <- c("Fri", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu")
 ```
 
+Issues
+======
+
+``` r
+states <- map_data("state")
+```
+
+    ## Warning: package 'maps' was built under R version 3.6.1
+
+    ## 
+    ## Attaching package: 'maps'
+
+    ## The following object is masked from 'package:purrr':
+    ## 
+    ##     map
+
+``` r
+usamap <- ggplot(states, aes(long, lat, group = group)) +
+  geom_polygon(fill = "white", colour = "black")
+
+usamap + coord_map(projection = "mercator")
+```
+
+![](Inferences_files/figure-markdown_github/unnamed-chunk-2-1.png)
+
+We can use coord\_map to project map into mercator map. However, we
+can’t use it in inference below. To use mercator projection, we need to
+know the longtitude and latitude.
+
+but, the shape file of Nowon and Jongno is privided just Cartesian x / y
+coordinate.
+
+``` r
+HDONG_map %>% 
+  select(long, lat) %>%
+  summary()
+```
+
+    ##       long             lat         
+    ##  Min.   :951368   Min.   :1951963  
+    ##  1st Qu.:953344   1st Qu.:1953147  
+    ##  Median :955662   Median :1953916  
+    ##  Mean   :956490   Mean   :1955542  
+    ##  3rd Qu.:959999   3rd Qu.:1957626  
+    ##  Max.   :965812   Max.   :1966369
+
+The latitude of South korea is 33 to 43, and longtitude is 124 to 132.
+But in the shape file, latitude is 951368 up to 965812, and the
+longtitude is 1951963 up to 1966369.
+
+I think it is the reason why coor\_map does not work in my ggmap.
+
 1) SK\_Age
 ----------
 
@@ -159,11 +211,7 @@ Gamma-Hurdle Model for SK\_Age Data.
 
 ``` r
 glm_SK_Age_Binom <- glm(Non_zero ~ ., data = SK_Age_HDONG_Modified %>% select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Avg_pop, -Holiday), family = binomial(link = "logit"))
-```
 
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-``` r
 glm_SK_Age_Gamma_HDONG <- glm(Avg_pop ~ HDONG_CD + Sex + Age + AGE_CTG + avg_temp + avg_pm10 + avg_pm25 + pm10_CTG + pm25_CTG + Week_Day + Holiday + HDONG_CD:pm25_CTG + HDONG_CD:AGE_CTG + HDONG_CD:Holiday + HDONG_CD:Sex + pm25_CTG:AGE_CTG, 
                          data = SK_Age_HDONG_Modified %>% filter(Non_zero == 1) %>%
                           select(-MONTH, -STD_YM, -STD_YMD, -HDONG_NM, -Non_zero), 
@@ -177,11 +225,7 @@ Gamma-Hurdle Model for SK\_Time Data
 
 ``` r
 glm_SK_Time_Binom <- glm(Non_zero ~ ., data = SK_Time_HDONG_Modified %>% select(-STD_YM, -STD_YMD, -HDONG_NM, -Avg_pop), family = binomial)
-```
 
-    ## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
-
-``` r
 glm_SK_Time_Gamma_HDONG <- glm(Avg_pop ~ HDONG_CD + Time + Week_Day + avg_temp + avg_pm10 + avg_pm25 +
                                        pm10_CTG + pm25_CTG + pm10_Wrn + Holiday + Time_Group + 
                            HDONG_CD:Week_Day + HDONG_CD:pm25_CTG + HDONG_CD:Holiday +
@@ -341,7 +385,7 @@ tibble(HDONG_CD = HDong_CD$HDONG_CD,
   facet_wrap(~Sex) 
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-14-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-17-1.png)
 
 ``` r
 tibble(AGE_CTG = Age_level %>% rep(each = 6), 
@@ -369,7 +413,7 @@ tibble(AGE_CTG = Age_level %>% rep(each = 6),
   geom_point(aes(x = pm25_CTG, y = Est_point, color = AGE_CTG))
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-18-1.png)
 
 ``` r
 tibble(AGE_CTG = Age_level %>% rep(each = 6), 
@@ -395,7 +439,7 @@ tibble(AGE_CTG = Age_level %>% rep(each = 6),
   geom_point(aes(x = pm25_CTG, y = Est_point))
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
 Youth와 Middle 동일.
 
@@ -518,7 +562,7 @@ tibble(pm25_CTG = Dust_level %>% rep(each = 4),
   geom_point(aes(x = pm25_CTG, y = Est_point, color = Time_Group))
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-18-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-21-1.png)
 
 ``` r
 tibble(pm25_CTG = Dust_level %>% rep(each = 4), 
@@ -540,7 +584,7 @@ tibble(pm25_CTG = Dust_level %>% rep(each = 4),
   geom_point(aes(x = pm25_CTG, y = Est_point))
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-19-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-22-1.png)
 
 ``` r
 Age_seq <- seq(0, 100, by = 5)
@@ -713,7 +757,7 @@ tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "De
   geom_point(aes(x = pm10_CTG, y = Est_point))
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-21-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-24-1.png)
 
 ``` r
 tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6), 
@@ -763,12 +807,6 @@ tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 6),
 ### (2) gam\_Dist
 
 ``` r
-plot(gam_Dist, pages = 1)
-```
-
-![](Inferences_files/figure-markdown_github/unnamed-chunk-22-1.png)
-
-``` r
 summary_gam_Dist <- summary(gam_Dist)$p.table %>%
   data.frame() %>%
   rownames_to_column(var = "Variable") %>%
@@ -801,6 +839,7 @@ tibble(HDONG_CD = rep(HDong_CD$HDONG_CD, each = 8),
   mutate(Estimate = val_HDONG_CTG, 
          Estimate = ifelse(Category == "10", val_HDONG, Estimate)) %>%
   left_join(HDONG_map, by = "HDONG_CD") %>%
+  filter(Category_NM %in% c("마실거리", "식사")) %>%
   ggplot() +
   geom_polygon(aes(x = long, y = lat, group = group, fill = Estimate), color = "black") +
   scale_fill_gradient2(low = "red", high = "blue") +
@@ -879,7 +918,7 @@ tibble(Category = rep(Dist_Category$CTG_CD, each = 12),
   facet_wrap(~Type)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-25-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-28-1.png)
 
 ``` r
 Exclude_HDONG <- c("11110515", "11110540", "11110570", "11110680", "11110700", "11350570", "11350612", 
@@ -902,7 +941,7 @@ tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "De
   facet_wrap(~HDONG_NM, scales = "free")
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-26-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-29-1.png)
 
 ``` r
 tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"), 
@@ -921,7 +960,7 @@ tibble(Month = rep(c("Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "De
   facet_wrap(~HDONG_NM)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-27-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-30-1.png)
 
 AMT\_IND 높은 순서대로 가회동, 부암동, 중계4동, 사직동, 중계본동,
 평창동, 무악동, 삼청동, 이화동, 상계8동 등등…
@@ -949,7 +988,7 @@ summary_glm_NB_Card %>%
   geom_bar(aes(x = pm10_CTG, y = val_pm10, fill = Type), stat = "identity", alpha = 0.7)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-29-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-32-1.png)
 
 glm\_NB\_Card는 avg\_pm10 없음.
 
@@ -976,9 +1015,9 @@ summary_glm_NB_Card %>%
   geom_point(aes(x = pm25_CTG, y = Est_point))
 ```
 
-    ## Warning: Removed 3 rows containing missing values (geom_point).
+    ## Warning: Removed 4 rows containing missing values (geom_point).
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-30-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-33-1.png)
 
 ``` r
 summary_glm_NB_Card %>%
@@ -994,7 +1033,7 @@ summary_glm_NB_Card %>%
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-31-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-34-1.png)
 
 ``` r
 summary_glm_NB_Card %>%
@@ -1010,7 +1049,7 @@ summary_glm_NB_Card %>%
   geom_bar(aes(x = AGE, y = val_AGE), stat = "identity", alpha = 0.7)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-32-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-35-1.png)
 
 ``` r
 summary_glm_NB_Card %>%
@@ -1025,7 +1064,7 @@ summary_glm_NB_Card %>%
   scale_fill_gradient2(low = "red", high = "blue")
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-33-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-36-1.png)
 
 ``` r
 glm_NB_Card_Hol_coef <- summary_glm_NB_Card %>% filter(Variable == "Holiday1") %>% .$Estimate
@@ -1045,6 +1084,6 @@ summary_glm_NB_Card %>%
   geom_bar(aes(x = Week_Day, y = Estimate, fill = Type), stat = "identity", alpha = 0.7)
 ```
 
-![](Inferences_files/figure-markdown_github/unnamed-chunk-34-1.png)
+![](Inferences_files/figure-markdown_github/unnamed-chunk-37-1.png)
 
 Sat, Sun에는 Holiday Effect 추가.
